@@ -13,7 +13,8 @@ Local original source, isolated development dependencies and disposable framewor
 - `modules/openclaw-voice-plugin`: independent local main git repository; original MIT code. Package identity `@lordratner/openclaw-voice-plugin` is provisional until release.
 - `modules/home-assistant-openclaw-voice`: independent local main git repository; original MIT code. HA domain `openclaw_voice` is provisional until registration/packaging.
 - Neither product is installable yet. The only registered plugin is a clearly named isolated test fixture; production plugin entry/manifest and HA manifest/config-entry registration remain unfinished.
-- GitHub identity `lordratner` and proposed repository-name availability were checked read-only. No GitHub remote repositories have yet been created or pushed.
+- Requested private GitHub repositories created and initial source pushed: https://github.com/lordratner/openclaw-voice-plugin and https://github.com/lordratner/home-assistant-openclaw-voice. Public release is not implied.
+- Initial source commits: OC a394b2f6ddfbaaa9c86dcfbeca4b5966e2f9d031; HA 2fe4f2e31181724513a938052763c4737bd5000d.
 - Both modules contain the full planning baseline, module README and provenance/license notices. No community application source has been copied into these products.
 
 ## Implemented source
@@ -55,7 +56,7 @@ Actual framework proof, not just mocks:
 
 ## Gate / milestone state
 
-- P00/H00: local source/bootstrap/provenance complete; remote repository/publication bootstrap still pending.
+- P00/H00: local source/bootstrap/provenance complete; private remote repositories created and initial source pushed; public release still separate.
 - P01/H01: central normal-agent/run-control/text-stream/speech/native-HA-action/paired-TTS feasibility demonstrated. Full session-lock/runtime matrix, cancellation and metadata capability projection remain unfinished.
 - P02/H02: experimental speech subprotocol and executable paired client implemented. Complete versioned conversation/STT/job/reconnect protocol not frozen.
 - P03/P04/P07 and H06/H08: core library work in progress, not complete product milestones.
@@ -80,7 +81,7 @@ Actual framework proof, not just mocks:
 3. Register production plugin manifest/service/profile schema and owner-only pairing/revocation controls, with bounded rate limits, active authority rechecks and exact job delivery ownership. Do not copy fixture control routes into production.
 4. Implement HA config/options flow and lifecycle, capabilities discovery, native STT/conversation entity registration, TTS registration and both automation actions. HA chooses mode only; OC owns actual target/agent/model policy.
 5. Normalize/validate audio formats and complete provider/retention/cache/error diagnostics matrix; run actual pair acceptance. Then prepare a separate controlled live install/provider/satellite validation proposal with rollback.
-6. Create/sync the two remote repositories within the requested repository workflow once bootstrap/publication choices are concrete. Never publish private test state, credentials, local caches or installed-source snapshots.
+6. Continue local development on the two private repositories; sync verified source checkpoints within the requested repository workflow. Never publish private test state, credentials, local caches or installed-source snapshots.
 
 ## Development environment and hygiene
 

@@ -35,7 +35,7 @@ The authoritative, detailed implementation ledger is [implementation/STATUS.md](
 - OC automated suite: 36 passed; HA suite: 27 passed. A separate native paired framework proof passed on OC2026.10.3 / HA2026.10.4.
 - Selected-agent native tool/context dispatch, fresh/existing run controls without saved-setting mutation, native HA action-mode correlation, OC speech paths and actual unfinished-text HA→OC→audio delivery are demonstrated with local synthetic providers.
 - Framework foundation and speech transport exist; neither production module is installable yet. Config/registration, full conversation/STT/job protocol, both registered actions, resilience, codec normalization and real provider/hardware acceptance remain unfinished.
-- No GitHub remotes, live configuration changes, real provider calls or physical playback tests have been performed for these products.
+- Two private GitHub remotes now contain the initial source checkpoint. No live configuration changes, real provider calls or physical playback tests have been performed.
 - Next: complete protocol/job lifecycle and production adapters/registration. This does not require another requirements-approval round. Live deployment still requires its own scope/rollback review.
 
 ## 3. Planning completion checklist
