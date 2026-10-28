@@ -12,6 +12,11 @@
     "test:native-pair": "node tests/isolated-gateway-proof.mjs"
   },
   "description": "OpenClaw Home Assistant plugin: agent-neutral, streaming-first speech and conversation backend",
+  "openclaw": {
+    "extensions": [
+      "./src/plugin.mjs"
+    ]
+  },
   "peerDependencies": {
     "openclaw": "2026.10.3"
   },
@@ -19,5 +24,15 @@
     "openclaw": {
       "optional": true
     }
-  }
+  },
+  "files": [
+    "src/",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/",
+    "planning/",
+    "implementation/STATUS.md"
+  ]
 }

@@ -99,3 +99,27 @@ test("explicit target missing or cross-agent cannot become an automatic binding"
   const bindings = new SessionBindings({ ...options, persistentSession: "agent:other:foreign" });
   await assert.rejects(bindings.open(request("a", "persistent")), /invalid_session_target/);
 });
+
+test("proven native rollover preserves the logical persistent target but ends old HA conversations", async () => {
+  const { bindings, sessions, created } = await setup();
+  const first = await bindings.open(request("before", "persistent"));
+  const original = [...sessions.values()][0];
+  sessions.set(original.key, { ...original, sessionId: "rolled", lifecycleRevision: "r2", previousSessionId: original.sessionId });
+  const next = await bindings.open(request("after", "persistent"));
+  assert.equal((await bindings.resolve("client-a", next.conversation_handle)).target.sessionId, "rolled");
+  await assert.rejects(bindings.resolve("client-a", first.conversation_handle), /persistent_binding_changed/);
+  assert.equal(created(), 1);
+});
+
+test("owner rebind is stale-safe and never changes a fresh conversation's target", async () => {
+  const { bindings, host, sessions } = await setup();
+  const persistent = await bindings.open(request("persistent", "persistent"));
+  const fresh = await bindings.open(request("fresh"));
+  const prior = await bindings.describePersistent(true);
+  const target = await host.createSession({ agentId: "voice", idempotencyKey: "different" });
+  await bindings.rebindPersistent({ expectedRevision: prior.binding_revision, sessionKey: target.key });
+  await assert.rejects(bindings.rebindPersistent({ expectedRevision: prior.binding_revision, sessionKey: target.key }), /stale_persistent_binding/);
+  await assert.rejects(bindings.resolve("client-a", persistent.conversation_handle), /persistent_binding_changed/);
+  assert.ok(await bindings.resolve("client-a", fresh.conversation_handle));
+  assert.equal(sessions.size, 3);
+});

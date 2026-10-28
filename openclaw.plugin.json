@@ -1,0 +1,50 @@
+{
+  "id": "openclaw-home-assistant",
+  "name": "OpenClaw Home Assistant",
+  "description": "Home Assistant STT, agent conversation and streaming-first TTS through OpenClaw",
+  "version": "0.0.1-dev.0",
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "agentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "persistentSession": { "type": "string", "minLength": 1, "maxLength": 512 },
+      "conversation": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "model": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "thinking": { "type": "string", "minLength": 1, "maxLength": 32 },
+          "fast": { "anyOf": [ { "type": "boolean" }, { "type": "string", "enum": ["inherit", "auto", "ultrafast"] } ] }
+        }
+      },
+      "stt": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "provider": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "model": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "language": { "type": "string", "minLength": 2, "maxLength": 32 }
+        }
+      },
+      "tts": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "provider": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "model": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "voice": { "type": "string", "minLength": 1, "maxLength": 512 }
+        }
+      },
+      "languages": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "type": "string", "minLength": 2, "maxLength": 32 } },
+      "defaultLanguage": { "type": "string", "minLength": 2, "maxLength": 32 }
+    }
+  },
+  "uiHints": {
+    "agentId": { "label": "Home Assistant agent", "help": "Required: an existing agent ID. Never defaults silently to another agent." },
+    "persistentSession": { "label": "Persistent session", "help": "Optional existing same-agent session key. Omit to create and durably bind one on first persistent use." },
+    "conversation.model": { "label": "Conversation model", "help": "Native OpenClaw model reference or inherit." },
+    "conversation.thinking": { "label": "Thinking level", "help": "Native OpenClaw thinking level or inherit." },
+    "conversation.fast": { "label": "Fast mode", "help": "Native preference: true, false, auto, ultrafast or inherit." },
+    "stt": { "label": "Speech recognition", "help": "Inherit the OC audio pipeline or select a native provider/model. No credentials here." },
+    "tts": { "label": "Speech synthesis", "help": "Inherit native OC speech settings or select provider/model/voice. No credentials here." }
+  }
+}

@@ -35,6 +35,8 @@ export class SessionBindings {
       let binding = scope.conversations[key];
       if (binding) {
         if (binding.mode !== mode) throw new SessionBindingError("conversation_mode_conflict");
+        if (binding.mode === "persistent" && !sameTarget(binding.target, scope.persistent))
+          throw new SessionBindingError("persistent_binding_changed");
         await this.#assertBinding(binding);
         binding.expires = this.clock() + this.idleTtlMs;
         return this.#public(binding);
@@ -48,13 +50,26 @@ export class SessionBindings {
       let target;
       if (mode === "persistent") {
         target = scope.persistent;
-        if (target && this.persistentSession && target.key !== this.persistentSession)
-          throw new SessionBindingError("persistent_rebind_required");
+        if (target && this.persistentSession && target.key !== this.persistentSession) {
+          // An explicit owner config selection is a new target, not a reason
+          // to create a replacement or rewrite anyone's native session.
+          target = await this.host.inspectSession(this.agentId, this.persistentSession);
+          this.#validateTarget(target);
+          scope.persistent = structuredClone(target);
+        }
         if (!target) {
           target = this.persistentSession
             ? await this.host.inspectSession(this.agentId, this.persistentSession)
             : await this.host.createSession({ agentId: this.agentId,
               idempotencyKey: hash(this.namespace, "persistent"), label: "Voice persistent" });
+          this.#validateTarget(target);
+          scope.persistent = structuredClone(target);
+        }
+        const current = await this.host.inspectSession(this.agentId, target.key);
+        if (current && current.key === target.key && current.previousSessionId === target.sessionId && current.sessionId !== target.sessionId) {
+          // Proven native reset/rollover lineage, same logical target. Existing
+          // HA conversations retain their old physical target and must end.
+          target = current;
           this.#validateTarget(target);
           scope.persistent = structuredClone(target);
         }
@@ -75,9 +90,12 @@ export class SessionBindings {
   async resolve(principal, handle) {
     [principal, handle].forEach(requireId);
     return this.state.transaction(async (all) => {
-      const binding = Object.values(all[this.namespace]?.conversations ?? {})
+      const scope = all[this.namespace];
+      const binding = Object.values(scope?.conversations ?? {})
         .find((value) => value.handle === handle && value.principal === principal);
       if (!binding) throw new SessionBindingError("conversation_not_found");
+      if (binding.mode === "persistent" && !sameTarget(binding.target, scope.persistent))
+        throw new SessionBindingError("persistent_binding_changed");
       await this.#assertBinding(binding);
       binding.expires = this.clock() + this.idleTtlMs;
       // Internal only: transport callers must receive #public(), never raw OC keys.
@@ -94,6 +112,32 @@ export class SessionBindings {
       if (!found) return false;
       delete scope.conversations[found[0]];
       return true;
+    });
+  }
+
+  async describePersistent(includeTarget = false) {
+    const target = await this.state.read((all) => all[this.namespace]?.persistent ?? null);
+    if (!target) return { status: this.persistentSession ? "explicit_unvalidated" : "auto_pending", binding_revision: "unbound",
+      ...(includeTarget && this.persistentSession ? { session_key: this.persistentSession } : {}) };
+    const current = await this.host.inspectSession(this.agentId, target.key);
+    return { status: sameTarget(target, current) ? "bound" : current?.previousSessionId === target.sessionId ? "rollover_pending" : "rebind_required",
+      binding_revision: hash(target.key, target.sessionId, target.lifecycleRevision),
+      ...(includeTarget ? { session_key: target.key } : {}) };
+  }
+
+  async rebindPersistent({ expectedRevision, sessionKey }) {
+    if (this.persistentSession && sessionKey !== this.persistentSession)
+      throw new SessionBindingError("configured_persistent_target_mismatch");
+    return this.state.transaction(async (all) => {
+      const scope = all[this.namespace] ??= { persistent: null, conversations: {} };
+      const prior = scope.persistent;
+      const revision = prior ? hash(prior.key, prior.sessionId, prior.lifecycleRevision) : "unbound";
+      if (expectedRevision !== revision) throw new SessionBindingError("stale_persistent_binding");
+      const target = await this.host.inspectSession(this.agentId, sessionKey);
+      this.#validateTarget(target);
+      scope.persistent = structuredClone(target);
+      return { status: "bound", session_key: target.key,
+        binding_revision: hash(target.key, target.sessionId, target.lifecycleRevision) };
     });
   }
 

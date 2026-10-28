@@ -6,17 +6,33 @@ import { speechEvents } from "../../../src/speech-stream.mjs";
 import { readSpeechRequest, writeFrame } from "../../../src/protocol.mjs";
 import { VoiceClients } from "../../../src/client-authority.mjs";
 import { StateFile } from "../../../src/state-file.mjs";
+import { OpenClawHost } from "../../../src/openclaw-host.mjs";
+import { readdir } from "node:fs/promises";
 export default {
   id: "voice-proof", name: "Isolated voice framework proof",
   register(api) {
     const controls = new VoiceRunControls();
+    let forbiddenExecutions = 0;
+    api.registerAgentHarness({ id: "voice-lock-proof", label: "Synthetic locked session proof",
+      autoSelection: { providerIds: [] }, delegatedExecutionPluginIds: ["openclaw-home-assistant"],
+      supports: () => ({ supported: false }), runAttempt: async () => { throw new Error("locked fixture must never dispatch"); } });
+    const hostAdapter = new OpenClawHost(api, { agentId: "fixture-voice",
+      conversation: { model: "voice-fixture/voice-override", thinking: "low", fast: false },
+      tts: { provider: "openai", model: "fixture-tts", voice: "alloy" } });
     const clients = new VoiceClients({ state: new StateFile(process.env.VOICE_PROOF_CLIENT_STATE),
       agentId: "fixture-voice", profileId: "fixture" });
     api.on("before_model_resolve", controls.beforeModelResolve.bind(controls));
+    api.on("before_model_resolve", hostAdapter.controls.beforeModelResolve.bind(hostAdapter.controls));
+    api.on("llm_input", hostAdapter.observeModel.bind(hostAdapter));
     api.registerTool({
       name: "voice_proof", label: "Voice proof", description: "Return a synthetic test marker",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       async execute() { return { content: [{ type: "text", text: "TOOL_PROOF_OK" }] }; },
+    });
+    api.registerTool({
+      name: "voice_forbidden", label: "Forbidden fixture", description: "Must be denied by native tool policy",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      async execute() { forbiddenExecutions++; return { content: [{ type: "text", text: "FORBIDDEN_EXECUTED" }] }; },
     });
     api.registerHttpRoute({ path: "/plugins/voice-proof/tts", auth: "plugin", match: "exact",
       async handler(req, res) {
@@ -78,6 +94,52 @@ export default {
         }
         const request = JSON.parse(raw);
         const agentId = "fixture-voice";
+        if (request.kind === "policy_status") {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ forbiddenExecutions })); return true;
+        }
+        if (request.kind === "host_locked_session") {
+          const key = "agent:fixture-voice:voice-proof:locked";
+          try {
+            await api.runtime.agent.session.createSessionEntry({ cfg: api.config, agentId, key,
+              initialEntry: { agentHarnessId: "voice-lock-proof", modelSelectionLocked: true } });
+            const target = await hostAdapter.inspectSession(agentId, key);
+            let code;
+            try {
+              await hostAdapter.runTurn({ target, principal: "native-client", conversationId: "locked-proof",
+                text: "Must not dispatch", runId: randomUUID(), signal: new AbortController().signal, emit: async () => {} });
+            } catch (error) { code = error.code; }
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ code, locked: api.runtime.agent.session.getSessionEntry({ agentId, sessionKey: key,
+              readConsistency: "latest" }).modelSelectionLocked }));
+          } catch (error) {
+            res.writeHead(500, { "Content-Type": "application/json" }); res.end(JSON.stringify({ fixture_error: String(error) }));
+          }
+          return true;
+        }
+        if (request.kind === "host_sessions") {
+          const target = await hostAdapter.createSession({ agentId, idempotencyKey: "a".repeat(64) });
+          const repeated = await hostAdapter.createSession({ agentId, idempotencyKey: "a".repeat(64) });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ target, repeated, model: hostAdapter.model() })); return true;
+        }
+        if (request.kind === "host_turn") {
+          const target = await hostAdapter.createSession({ agentId, idempotencyKey: "b".repeat(64) });
+          const projected = [];
+          const result = await hostAdapter.runTurn({ target, principal: "native-client", conversationId: "native-conversation",
+            text: "Use voice_proof and answer with the fixture text.", runId: randomUUID(),
+            signal: new AbortController().signal, emit: async (event) => { projected.push({ ...event, at: Date.now() }); } });
+          const after = await hostAdapter.inspectSession(agentId, target.key);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ result, projected, before: target, after })); return true;
+        }
+        if (request.kind === "host_stt") {
+          async function* audio() { yield Buffer.alloc(3200); }
+          const transcript = await hostAdapter.transcribe(audio(), { language: "en", signal: new AbortController().signal });
+          const empty = await hostAdapter.transcribe((async function* () {})(), { language: "en", signal: new AbortController().signal });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ transcript, empty, remaining: await readdir(hostAdapter.tempRoot) })); return true;
+        }
         if (request.kind === "pairing_issue" || request.kind === "revoke") {
           const result = request.kind === "pairing_issue" ? await clients.issue("Synthetic HA client") : await clients.revoke(request.client_id);
           res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
@@ -90,6 +152,7 @@ export default {
             const streaming = await streamSpeech(common);
             await streaming.release?.();
             const buffered = await synthesizeSpeech(common);
+            const genericSpeech = await hostAdapter.speechHost().buffer("Generic model and voice override proof");
             const progressive = await streamSpeech({ ...common, overrides: { provider: "elevenlabs" } });
             let progressiveBytes = 0, progressiveChunks = 0;
             if (progressive.audioStream) {
@@ -104,6 +167,8 @@ export default {
             });
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ host_version: api.runtime.version, streaming: { ...streaming, audioStream: undefined },
+              genericSpeech: { success: genericSpeech.success, provider: genericSpeech.provider,
+                model: genericSpeech.providerModel, voice: genericSpeech.providerVoice },
               progressive: { ...progressive, audioStream: undefined, release: undefined,
                 bytes: progressiveBytes, chunks: progressiveChunks },
               buffered: { ...buffered, audioBuffer: undefined, bytes: buffered.audioBuffer?.length },

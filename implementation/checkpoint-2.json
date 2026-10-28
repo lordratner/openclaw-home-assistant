@@ -1,0 +1,53 @@
+{
+  "date": "2026-10-28",
+  "status": "development_candidate",
+  "tests": {
+    "openclaw": 74,
+    "home_assistant": 40
+  },
+  "native_framework": {
+    "openclaw": "2026.10.3",
+    "node": "v24.18.1",
+    "home_assistant": "2026.10.4",
+    "python": "3.14.10",
+    "ffmpeg": "7.1.5"
+  },
+  "native_proofs": {
+    "production": {
+      "ready": true,
+      "normal_turn": true,
+      "retry_without_execution": true,
+      "paired_via_admin_rpc": true
+    },
+    "nativePipeline": {
+      "status": "passed",
+      "native_config_flow": true,
+      "registered_entities": 3,
+      "stt": "native_batch",
+      "query_action": true,
+      "interactive_action": true,
+      "followup_mode_preserved": true,
+      "unloaded": true,
+      "audio_bytes": 40272,
+      "audible_playback_tested": false,
+      "request_started": 1793170746061.2466,
+      "first_audio": 1793170746938.3723,
+      "early_audio": true
+    },
+    "scopeProof": {
+      "status": "passed",
+      "admin_methods_denied": 5,
+      "cached_device_auth": false
+    },
+    "policyProof": {
+      "forbiddenExecutions": 0
+    },
+    "lockedProof": {
+      "code": "session_model_locked",
+      "locked": true
+    }
+  },
+  "physical_playback_tested": false,
+  "real_provider_calls": false,
+  "live_deployment": false
+}

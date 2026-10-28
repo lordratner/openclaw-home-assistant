@@ -8,6 +8,21 @@ export class SpeechStreamError extends Error {
 }
 
 function checkAbort(signal) { signal?.throwIfAborted(); }
+function sentenceBoundary(text) {
+  for (const match of text.matchAll(/[.!?。！？](?:["'”’)]*)(?:\s+|$)|\n/g)) {
+    if (match[0].startsWith(".")) {
+      const prefix = text.slice(0, match.index + 1);
+      // Avoid splitting a decimal at an arbitrary provider text-chunk edge,
+      // common titles/abbreviations, or an initial. This is a bounded speech
+      // heuristic, not a universal linguistic sentence parser.
+      if (/\d\.$/.test(prefix) && match.index + 1 === text.length) continue;
+      if (/(?:^|\s)(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e)\.$/i.test(prefix)) continue;
+      if (/(?:^|\s)[A-Za-z]\.$/.test(prefix)) continue;
+    }
+    return match.index + match[0].length;
+  }
+  return 0;
+}
 function* boundedBytes(bytes, limit) {
   for (let offset = 0; offset < bytes.length; offset += limit)
     yield bytes.subarray(offset, Math.min(offset + limit, bytes.length));
@@ -25,8 +40,7 @@ export async function* sentenceSegments(textStream, { maxText = 65536, maxSegmen
     if (total > maxText) throw new SpeechStreamError("text_limit");
     pending += text;
     while (pending) {
-      const boundary = /[.!?。！？](?:["'”’)]*)(?:\s+|$)|\n/.exec(pending);
-      let end = boundary ? boundary.index + boundary[0].length : 0;
+      let end = sentenceBoundary(pending);
       if (!end || end > maxSegment) {
         if (pending.length < maxSegment) break;
         const space = pending.lastIndexOf(" ", maxSegment);
@@ -50,7 +64,7 @@ function unsupported(result) {
 }
 
 export async function* speechEvents(textStream, { host, signal, maxAudioBytes = 32 * 1024 * 1024,
-  maxChunkBytes = 32768, textLimits = {} }) {
+  maxChunkBytes = 32768, textLimits = {}, allowFormatChange = false }) {
   if (!Number.isInteger(maxAudioBytes) || maxAudioBytes < 1 ||
       !Number.isInteger(maxChunkBytes) || maxChunkBytes < 1 || maxChunkBytes > 32768)
     throw new TypeError("invalid_audio_limits");
@@ -76,7 +90,7 @@ export async function* speechEvents(textStream, { host, signal, maxAudioBytes = 
       if (!result?.success) throw new SpeechStreamError("synthesis_failed");
       if (!result.outputFormat || !result.fileExtension) throw new SpeechStreamError("missing_audio_format");
       const nextFormat = JSON.stringify([result.outputFormat, result.fileExtension]);
-      if (format && format !== nextFormat) throw new SpeechStreamError("audio_format_changed");
+      if (format && format !== nextFormat && !allowFormatChange) throw new SpeechStreamError("audio_format_changed");
       format = nextFormat;
       yield { type: "audio_start", sequence: ++sequence, segment, mode,
         output_format: result.outputFormat, extension: result.fileExtension.replace(/^\./, ""),

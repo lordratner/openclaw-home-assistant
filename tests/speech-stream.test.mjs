@@ -94,3 +94,10 @@ test("empty synthesis is a failure and Unicode budgets count UTF-8 bytes", async
   await assert.rejects(collect(speechEvents(chunks("Hello."), { host })), /empty_audio/);
   await assert.rejects(collect(sentenceSegments(chunks("🐈".repeat(5)), { maxText: 16, maxSegment: 16 })), /text_limit/);
 });
+
+test("fragmented decimal and title do not produce premature sentence audio", async () => {
+  const segments = await collect(sentenceSegments(chunks("Dr.", " Smith paid 3.", "14 dollars. Next!", " 中文。")));
+  assert.equal(segments[0], "Dr. Smith paid 3.14 dollars. ");
+  assert.equal(segments.join(""), "Dr. Smith paid 3.14 dollars. Next! 中文。");
+  assert.equal((await collect(sentenceSegments(chunks("Final number 3.")))).join(""), "Final number 3.");
+});

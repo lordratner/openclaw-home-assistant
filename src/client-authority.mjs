@@ -12,6 +12,9 @@ export class ClientAuthorityError extends Error {
 }
 
 export class VoiceClients {
+  #leases = new Map();
+  #revocations = new Set();
+  #closed = false;
   constructor({ state, agentId, profileId, clock = Date.now, maxClients = 16 }) {
     if (!agentId || !profileId || !Number.isInteger(maxClients) || maxClients < 1)
       throw new TypeError("invalid_authority_config");
@@ -20,6 +23,7 @@ export class VoiceClients {
   }
 
   async issue(label = "Home Assistant") {
+    if (this.#closed) throw new ClientAuthorityError("backend_stopping");
     if (typeof label !== "string" || !label.trim() || label.length > 80)
       throw new ClientAuthorityError("invalid_client_label");
     const code = secret();
@@ -36,6 +40,7 @@ export class VoiceClients {
   }
 
   async claim(code) {
+    if (this.#closed) throw new ClientAuthorityError("backend_stopping");
     if (typeof code !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(code))
       throw new ClientAuthorityError("invalid_pairing");
     const token = secret(), principal = randomUUID();
@@ -52,6 +57,7 @@ export class VoiceClients {
   }
 
   async authenticate(token, scope) {
+    if (this.#closed) throw new ClientAuthorityError("unauthorized");
     if (!["conversation", "stt", "tts", "capabilities"].includes(scope))
       throw new ClientAuthorityError("scope_denied");
     if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token))
@@ -71,12 +77,43 @@ export class VoiceClients {
       .map(([id, value]) => ({ client_id: id, label: value.label, created_at: value.createdAt })));
   }
 
+  async authorize(token, scope) {
+    const identity = await this.authenticate(token, scope);
+    const leases = this.#leases.get(identity.id) ?? new Set();
+    if (leases.size >= 16) throw new ClientAuthorityError("client_request_capacity");
+    const controller = new AbortController();
+    leases.add(controller); this.#leases.set(identity.id, leases);
+    const release = () => { leases.delete(controller); if (!leases.size) this.#leases.delete(identity.id); };
+    try {
+      // Close the authenticate/register race with a durable revocation.
+      await this.authenticate(token, scope);
+      if (this.#closed) throw new ClientAuthorityError("unauthorized");
+      controller.signal.throwIfAborted();
+    } catch (error) { release(); throw error; }
+    return Object.freeze({ ...identity, signal: controller.signal, release,
+      assertCurrent: () => controller.signal.throwIfAborted() });
+  }
+
+  onRevoke(listener) { this.#revocations.add(listener); return () => this.#revocations.delete(listener); }
+
   async revoke(principal) {
-    return this.state.transaction((all) => {
+    const revoked = await this.state.transaction((all) => {
       const scope = all[this.namespace];
-      if (!scope?.clients[principal]) return false;
+      if (!scope || !Object.hasOwn(scope.clients, principal)) return false;
       delete scope.clients[principal];
       return true;
     });
+    if (revoked) {
+      for (const controller of this.#leases.get(principal) ?? []) controller.abort(new ClientAuthorityError("client_revoked"));
+      await Promise.allSettled([...this.#revocations].map((listener) => listener(principal)));
+    }
+    return revoked;
+  }
+
+  close() {
+    this.#closed = true;
+    for (const leases of this.#leases.values()) for (const controller of leases)
+      controller.abort(new ClientAuthorityError("backend_stopping"));
+    this.#leases.clear(); this.#revocations.clear();
   }
 }
