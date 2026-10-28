@@ -1,4 +1,4 @@
-# OpenClaw Voice plugin — development foundation
+# OpenClaw Home Assistant plugin — development foundation
 
 Reusable, agent-neutral backend for the paired Home Assistant integration.
 OpenClaw owns agent/session/model/speech policy and provider credentials. HA is

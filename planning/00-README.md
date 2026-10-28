@@ -1,4 +1,4 @@
-# OpenClaw Voice: paired-product development planning package
+# OpenClaw Home Assistant: paired-product development planning package
 
 Current execution: owner authorized development in message 20256. See [implementation status](../implementation/STATUS.md). Historical planning-only statements below describe the review snapshot; they do not cancel the later development authorization. Live deployment remains separate.
 

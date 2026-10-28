@@ -137,3 +137,8 @@ Owner message 20256 authorized development. Two independent local source reposit
 ## 12. Private repository bootstrap
 
 Created the two requested GitHub repositories under lordratner as private development repositories and pushed the verified initial source checkpoints. OC source a394b2f6ddfbaaa9c86dcfbeca4b5966e2f9d031; HA source 2fe4f2e31181724513a938052763c4737bd5000d. No public release or live installation occurred.
+
+
+## 13. Home Assistant plugin naming correction
+
+Owner message 20272 requires the plugin name to identify Home Assistant rather than generic voice functionality. Adopted product name OpenClaw Home Assistant, repository lordratner/openclaw-home-assistant, package @lordratner/openclaw-home-assistant, and local checkout modules/openclaw-home-assistant. The existing GitHub repository was renamed, preserving history and privacy. The companion integration repository/domain and protocol identifiers are unchanged. Historical review archives and dated log entries retain their original names. No behavior or live configuration changed.

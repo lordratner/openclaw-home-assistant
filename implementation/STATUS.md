@@ -1,4 +1,4 @@
-# OpenClaw Voice — development checkpoint 1
+# OpenClaw Home Assistant — development checkpoint 1
 
 Updated: 2026-10-27. This is the authoritative current ledger, not a release-readiness certificate.
 
@@ -10,10 +10,10 @@ Local original source, isolated development dependencies and disposable framewor
 
 ## Repositories / publication
 
-- `modules/openclaw-voice-plugin`: independent local main git repository; original MIT code. Package identity `@lordratner/openclaw-voice-plugin` is provisional until release.
+- `modules/openclaw-home-assistant`: independent local main git repository; original MIT code. Package identity `@lordratner/openclaw-home-assistant`; product name OpenClaw Home Assistant, per owner correction 20272.
 - `modules/home-assistant-openclaw-voice`: independent local main git repository; original MIT code. HA domain `openclaw_voice` is provisional until registration/packaging.
 - Neither product is installable yet. The only registered plugin is a clearly named isolated test fixture; production plugin entry/manifest and HA manifest/config-entry registration remain unfinished.
-- Requested private GitHub repositories created and initial source pushed: https://github.com/lordratner/openclaw-voice-plugin and https://github.com/lordratner/home-assistant-openclaw-voice. Public release is not implied.
+- Requested private GitHub repositories created and initial source pushed: https://github.com/lordratner/openclaw-home-assistant and https://github.com/lordratner/home-assistant-openclaw-voice. Public release is not implied.
 - Initial source commits: OC a394b2f6ddfbaaa9c86dcfbeca4b5966e2f9d031; HA 2fe4f2e31181724513a938052763c4737bd5000d.
 - Both modules contain the full planning baseline, module README and provenance/license notices. No community application source has been copied into these products.
 
