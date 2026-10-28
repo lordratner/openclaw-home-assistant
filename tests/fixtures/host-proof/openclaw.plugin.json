@@ -1,0 +1,7 @@
+{
+  "id": "voice-proof",
+  "name": "Isolated voice framework proof",
+  "activation": { "onStartup": true },
+  "contracts": { "tools": ["voice_proof"] },
+  "configSchema": { "type": "object", "additionalProperties": false }
+}

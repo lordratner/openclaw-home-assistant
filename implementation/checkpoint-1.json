@@ -1,0 +1,55 @@
+{
+  "checkpoint": 1,
+  "status": "passed",
+  "production_ready": false,
+  "real_provider_calls": false,
+  "physical_playback_tested": false,
+  "automated_tests": {
+    "oc": 36,
+    "ha": 27,
+    "total": 63
+  },
+  "versions": {
+    "openclaw": "2026.10.3",
+    "node": "v24.18.1",
+    "homeassistant": "2026.10.4",
+    "python": "3.14.10"
+  },
+  "native_agent": {
+    "model_requests": 3,
+    "observed_models": [
+      "voice-override",
+      "voice-override",
+      "voice-override"
+    ],
+    "observed_thinking": [
+      "low",
+      "low",
+      "low"
+    ],
+    "normal_tool_verified": true,
+    "workspace_context_verified": true,
+    "shared_preferences_unchanged": true,
+    "opening_before_ending": true
+  },
+  "speech": {
+    "openai_streaming_output": false,
+    "openai_buffered_output": true,
+    "elevenlabs_progressive_output": true,
+    "elevenlabs_chunks": 2,
+    "transcription": "SYNTHETIC_TRANSCRIPT_OK"
+  },
+  "native_pair": {
+    "status": "passed",
+    "bytes": 7556,
+    "extension": "mp3",
+    "homeassistant": "2026.10.4",
+    "python": "3.14.10",
+    "early_audio": true,
+    "audible_playback_tested": false,
+    "first_audio_ms": 227.2,
+    "decoded_seconds": 0.863125,
+    "scoped_client": true,
+    "revocation_tested": true
+  }
+}
