@@ -1,11 +1,55 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { speechEvents, sentenceSegments } from "../src/speech-stream.mjs";
+import { Diagnostics, failureSummary } from "../src/observability.mjs";
+import { canonicalSpeech } from "../src/audio-stream.mjs";
 
 const chunks = async function* (...values) { yield* values; };
 const collect = async (source) => { const all = []; for await (const value of source) all.push(value); return all; };
 const unsupported = () => ({ success: false, attempts: [{ outcome: "skipped", reasonCode: "unsupported_for_streaming" }] });
 const buffered = () => ({ success: true, audioBuffer: Buffer.from("sound"), fileExtension: ".mp3", outputFormat: "mp3", provider: "unfamiliar" });
+
+test("failed native synthesis attempts survive normalization wrappers as safe provider diagnostics", async () => {
+  const diag = new Diagnostics();
+  const host = { stream: async () => ({ success: false, attempts: [{ outcome: "failed", provider: "elevenlabs",
+    status: 401, error: "PRIVATE_AUDIO_TOKEN_URL", reasonCode: "provider_error" }] }) };
+  let failure;
+  await assert.rejects(async () => {
+    try { await collect(canonicalSpeech(chunks("PRIVATE_SPOKEN_TEXT"), { host, diagnostics: diag })); }
+    catch (error) { failure = failureSummary(error); throw error; }
+  });
+  assert.equal(failure.category, "authentication");
+  assert.equal(failure.http_status, 401);
+  assert.equal(failure.stage, "synthesis_request");
+  assert.equal(failure.provider, "elevenlabs");
+  assert.ok(!JSON.stringify(failure).includes("PRIVATE"));
+});
+
+test("cleanup failures are logged without masking the provider's primary failure", async () => {
+  const diag = new Diagnostics();
+  const primary = Object.assign(new Error("PRIVATE_PROVIDER_TOKEN"), { status: 429 });
+  let released = 0;
+  const host = { stream: async () => ({ ...buffered(), audioStream: new ReadableStream({
+    start(controller) { controller.error(primary); },
+  }), release: async () => { released++; throw Object.assign(new Error("PRIVATE_DISK_PATH"), { code: "EIO" }); } }) };
+  await assert.rejects(collect(speechEvents(chunks("Hello."), { host, diagnostics: diag })), (e) => e === primary);
+  assert.equal(released, 1);
+  assert.equal(failureSummary(primary).http_status, 429);
+  assert.ok(diag.snapshot().failures.some((e) => e.phase === "cleanup_failed" && e.system_code === "EIO"));
+  assert.ok(!JSON.stringify(diag.snapshot()).includes("PRIVATE"));
+});
+
+test("best-effort reader cancellation failure stays nonfatal and is no longer silent", async () => {
+  let reads = 0;
+  const diag = new Diagnostics();
+  const host = { stream: async () => ({ ...buffered(), audioStream: { getReader() { return {
+    async read() { return reads++ ? { done: true } : { value: Buffer.from("audio"), done: false }; },
+    async cancel() { throw new Error("PRIVATE_CANCEL_ERROR"); }, releaseLock() {},
+  }; } } }) };
+  const result = await collect(speechEvents(chunks("Hello."), { host, diagnostics: diag }));
+  assert.equal(result.at(-1).type, "done");
+  assert.ok(diag.snapshot().failures.some((e) => e.operation === "provider_release"));
+});
 
 test("first sentence audio is produced before final text is supplied", async () => {
   let release;

@@ -6,6 +6,7 @@
 import { mkdir, open, readFile, rename, unlink, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { annotateFailure } from "./observability.mjs";
 
 const queueKey = Symbol.for("openclaw-home-assistant.state-queues.v1");
 const queues = globalThis[queueKey] ??= new Map();
@@ -30,7 +31,9 @@ export class StateFile {
       document = JSON.parse(await readFile(this.#path, "utf8"));
     }
     catch (error) {
-      if (error.code !== "ENOENT") throw error;
+      if (error.code !== "ENOENT") throw error instanceof SyntaxError
+        ? annotateFailure(error, { reason: "invalid_voice_state_json", category: "storage", stage: "storage" }) : error;
+      this.diagnostics?.event("storage", "load", "absent");
       document = { version: 1, state: {} };
     }
     if (document.version !== 1 || !document.state || Array.isArray(document.state) ||
@@ -57,6 +60,7 @@ export class StateFile {
         try { await file.writeFile(serialized); await file.sync(); }
         finally { await file.close(); }
         await rename(temporary, this.#path);
+        this.diagnostics?.event("storage", "transaction", "committed");
         const directory = await open(dirname(this.#path), "r");
         try { await directory.sync(); } finally { await directory.close(); }
       } finally { await unlink(temporary).catch((error) => { if (error.code !== "ENOENT") throw error; }); }

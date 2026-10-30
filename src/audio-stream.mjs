@@ -5,6 +5,7 @@
 import { spawn } from "node:child_process";
 import { JobError } from "./jobs.mjs";
 import { speechEvents } from "./speech-stream.mjs";
+import { annotateFailure, failureSummary } from "./observability.mjs";
 
 const formats = { mp3: "mp3", wav: "wav", flac: "flac", ogg: "ogg", opus: "ogg", aac: "aac", m4a: "mov", webm: "matroska", aiff: "aiff" };
 
@@ -107,7 +108,7 @@ async function write(input, bytes) {
   });
 }
 
-function decoder(extension, signal, binary, pcm) {
+function decoder(extension, signal, binary, pcm, diagnostics) {
   const format = formats[extension];
   if (!format) throw new JobError(extension === "pcm" ? "raw_audio_metadata_required" : "unsupported_audio_container");
   const child = spawn(binary, ["-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "1",
@@ -115,18 +116,31 @@ function decoder(extension, signal, binary, pcm) {
     ...(pcm ? ["-f", pcm.raw, "-ar", String(pcm.rate), "-ac", String(pcm.channels)] : []),
     "-i", "pipe:0", "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "24000",
     "-c:a", "pcm_s16le", "-flush_packets", "1", "-f", "s16le", "pipe:1"], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
-  child.stdin.on("error", () => {});
+  child.stdin.on("error", (error) => {
+    diagnostics?.event("audio", "decoder_input", signal.aborted ? "cancelled" : "failed",
+      failureSummary(error, { stage: "normalization" }), signal.aborted ? "debug" : "warn");
+  });
   // Never forward provider-controlled decoder stderr or retain unbounded logs.
   child.stderr.resume();
-  let killTimer;
+  diagnostics?.event("audio", "decoder", "started", { container: extension });
+  let killTimer, failure;
   const kill = () => {
     if (child.exitCode !== null) return;
     child.kill("SIGTERM");
     killTimer ??= setTimeout(() => child.kill("SIGKILL"), 2000);
   };
   const done = new Promise((resolve, reject) => {
-    child.once("error", (error) => reject(new JobError(error.code === "ENOENT" ? "audio_normalizer_unavailable" : "audio_decode_failed")));
-    child.once("close", (code) => {
+    child.once("error", (error) => {
+      const reason = error.code === "ENOENT" ? "audio_normalizer_unavailable" : "audio_decode_failed";
+      failure = failureSummary(error, { stage: "normalization", reason, category: "internal" });
+      diagnostics?.event("audio", "decoder_start", "failed", failure, "warn");
+      reject(annotateFailure(new JobError(reason), failure));
+    });
+    child.once("close", (code, signalName) => {
+      const cancelled = signal.aborted;
+      if (!cancelled && code !== 0) failure ??= { reason: "audio_decode_failed", stage: "normalization", exit_code: code, category: "internal" };
+      diagnostics?.event("audio", "decoder", cancelled ? "cancelled" : code === 0 ? "completed" : "failed",
+        { exit_code: code, signal: signalName, stage: "normalization", ...(cancelled ? { category: "cancelled" } : code === 0 ? {} : { reason: "audio_decode_failed" }) }, code === 0 || cancelled ? "debug" : "warn");
       clearTimeout(killTimer);
       signal.removeEventListener("abort", kill);
       code === 0 ? resolve() : reject(new JobError("audio_decode_failed"));
@@ -134,14 +148,14 @@ function decoder(extension, signal, binary, pcm) {
   });
   done.catch(() => {});
   if (signal.aborted) kill(); else signal.addEventListener("abort", kill, { once: true });
-  return { child, done, kill };
+  return { child, done, kill, get failure() { return failure; } };
 }
 
-export async function* canonicalSpeech(text, { host, signal, binary = "ffmpeg", maxBytes = 32 * 1024 * 1024 }) {
+export async function* canonicalSpeech(text, { host, signal, binary = "ffmpeg", maxBytes = 32 * 1024 * 1024, timing, diagnostics = timing?.span?.owner }) {
   const local = new AbortController();
   const combined = signal ? AbortSignal.any([signal, local.signal]) : local.signal;
-  const source = speechEvents(text, { host, signal: combined, allowFormatChange: true });
-  let current, pump;
+  const source = speechEvents(text, { host, signal: combined, allowFormatChange: true, timing, diagnostics });
+  let current, pump, primaryFailure;
   let sequence = 0, bytes = 0, segments = 0, started = false, mode;
   try {
     while (true) {
@@ -166,7 +180,7 @@ export async function* canonicalSpeech(text, { host, signal, binary = "ffmpeg", 
           initial = prefix.push(Buffer.from(input.value.bytes));
         }
       }
-      current = decoder(event.extension, combined, binary, prefix?.format);
+      current = decoder(event.extension, combined, binary, prefix?.format, diagnostics);
       const active = current;
       let decoded = 0;
       pump = (async () => {
@@ -189,6 +203,8 @@ export async function* canonicalSpeech(text, { host, signal, binary = "ffmpeg", 
       for await (const chunk of active.child.stdout) {
         combined.throwIfAborted();
         if (!chunk.length) continue;
+        timing?.mark("first_decoded_audio");
+        timing?.segment("decoded_audio", event.segment);
         decoded += chunk.length;
         const parts = !started ? Buffer.concat([streamWavHeader(), chunk]) : chunk;
         if (!started) {
@@ -210,11 +226,21 @@ export async function* canonicalSpeech(text, { host, signal, binary = "ffmpeg", 
       current = null;
       segments++;
     }
+  } catch (error) {
+    primaryFailure = error;
+    throw annotateFailure(error, { stage: "normalization" });
   } finally {
     local.abort(new JobError("audio_stream_closed"));
     current?.kill();
-    await pump?.catch(() => {});
-    await current?.done.catch(() => {});
-    await source.return();
+    for (const pending of [pump, current?.done]) await pending?.catch((error) => {
+      if (error !== primaryFailure) diagnostics?.event("audio", "decoder_release", "cleanup_failed",
+        failureSummary(error, { stage: "cleanup" }), "warn");
+    });
+    if (primaryFailure && current?.failure) annotateFailure(primaryFailure, current.failure);
+    try { await source.return(); }
+    catch (error) {
+      diagnostics?.event("audio", "source_release", "cleanup_failed", failureSummary(error, { stage: "cleanup" }), "warn");
+      if (!primaryFailure) throw error;
+    }
   }
 }

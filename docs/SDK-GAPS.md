@@ -1,6 +1,35 @@
 # Native SDK capability notes
 
-## Reliable streaming STT finalization
+## Candidate finite-input STT integration (plugin dev.6)
+
+The dev.6 bridge consumes the additive optional public injected-runtime method
+`api.runtime.mediaUnderstanding.transcribeAudioStream`. It does not import the
+private `openclaw/plugin-sdk/realtime-transcription` subpath. The reviewed core
+change is PR187371 at `79b395a14b0a03bf31c66a88e950a7c13af83232`, intended for
+separate backport to OpenClaw 2026.10.3; updating the bridge alone does not install it.
+
+The helper owns configured audio-provider/model selection and finite-input
+completion. The bridge contains no provider names, vendor WebSockets, commit
+messages, API keys, or provider-specific audio conversion. It forwards bounded
+PCM chunks while capture continues and submits only the completed transcript.
+The provider owns framing, acknowledgment and safe segmentation of long audio.
+Explicit batch models are not silently substituted with realtime models.
+
+An older host, unsupported format/model or unavailable finite-input capability
+uses the existing native batch path. The SDK guarantees that an unsupported
+result has not touched the input iterator. A failure after streaming admission
+throws and is not automatically replayed through batch or another provider.
+The bridge also rejects a host that consumes input and then reports unsupported.
+Capability output distinguishes batch-only hosts from provider-dependent
+streaming hosts, and transcript events report the actual mode.
+
+For initial provider proof, the ElevenLabs adapter implements finite mono PCM16
+16 kHz with `scribe_v2_realtime`, serial acknowledged segments below its upstream
+automatic-commit threshold, awaited final text, cancellation and no reconnect
+with a truncated utterance. Other providers can implement the same generic
+contract without changing this bridge. TTS is unchanged.
+
+## Shipped 2026.10.3 limitation (without the companion SDK change)
 
 The tested OpenClaw 2026.10.3 realtime-transcription surface exposes connection,
 audio send and close/connectivity operations. It does not expose a usable

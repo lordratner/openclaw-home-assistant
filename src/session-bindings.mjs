@@ -17,11 +17,11 @@ export class SessionBindingError extends Error {
 
 export class SessionBindings {
   constructor({ agentId, profileId, profileRevision, persistentSession, state, host,
-    maxBindings = 1024, idleTtlMs = 900_000, clock = Date.now }) {
+    maxBindings = 1024, idleTtlMs = 900_000, clock = Date.now, diagnostics }) {
     [agentId, profileId, profileRevision].forEach(requireId);
     if (!Number.isInteger(maxBindings) || maxBindings < 1 || idleTtlMs <= 0) throw new TypeError("invalid_limits");
     Object.assign(this, { agentId, profileId, profileRevision, persistentSession,
-      state, host, maxBindings, idleTtlMs, clock });
+      state, host, maxBindings, idleTtlMs, clock, diagnostics });
     // Revision changes invalidate handles, but cannot silently rebind the persistent history.
     this.namespace = hash("voice-v1", agentId, profileId);
   }
@@ -33,22 +33,34 @@ export class SessionBindings {
       const scope = all[this.namespace] ??= { persistent: null, conversations: {} };
       const key = hash(principal, haConversationId);
       let binding = scope.conversations[key];
+      let reopenedTarget;
       if (binding) {
         if (binding.mode !== mode) throw new SessionBindingError("conversation_mode_conflict");
         if (binding.mode === "persistent" && !sameTarget(binding.target, scope.persistent))
           throw new SessionBindingError("persistent_binding_changed");
-        await this.#assertBinding(binding);
-        binding.expires = this.clock() + this.idleTtlMs;
-        return this.#public(binding);
+        // A native satellite can reuse its HA chat ID after a voice-profile
+        // change or timeout. Rotate only this transport handle, not its history.
+        // Validate the original target even when profile/TTL checks would fail.
+        await this.#assertTarget(binding.target);
+        if (mode === "persistent" && this.persistentSession && binding.target.key !== this.persistentSession)
+          throw new SessionBindingError("persistent_binding_changed");
+        if (binding.profileRevision === this.profileRevision && binding.expires > this.clock()) {
+          this.diagnostics?.event("bindings", "open", "reused", { mode }, "info");
+          binding.expires = this.clock() + this.idleTtlMs;
+          return this.#public(binding);
+        }
+        reopenedTarget = structuredClone(binding.target);
+        this.diagnostics?.event("bindings", "open", "rotated", { mode,
+          reason: binding.profileRevision !== this.profileRevision ? "profile_changed" : "conversation_expired" }, "info");
       }
       // Only expired handles are reclaimed; never delete an OC session/transcript.
       for (const [id, value] of Object.entries(scope.conversations)) {
         if (value.expires <= this.clock()) delete scope.conversations[id];
       }
-      if (Object.keys(scope.conversations).length >= this.maxBindings)
+      if (!binding && Object.keys(scope.conversations).length >= this.maxBindings)
         throw new SessionBindingError("conversation_capacity");
-      let target;
-      if (mode === "persistent") {
+      let target = reopenedTarget;
+      if (!target && mode === "persistent") {
         target = scope.persistent;
         if (target && this.persistentSession && target.key !== this.persistentSession) {
           // An explicit owner config selection is a new target, not a reason
@@ -73,7 +85,7 @@ export class SessionBindings {
           this.#validateTarget(target);
           scope.persistent = structuredClone(target);
         }
-      } else {
+      } else if (!target) {
         target = await this.host.createSession({ agentId: this.agentId,
           idempotencyKey: hash(this.namespace, principal, haConversationId), label: "Voice conversation" });
         this.#validateTarget(target);
@@ -83,6 +95,7 @@ export class SessionBindings {
         expires: this.clock() + this.idleTtlMs };
       await this.#assertBinding(binding);
       scope.conversations[key] = binding;
+      this.diagnostics?.event("bindings", "open", "committing", { mode });
       return this.#public(binding);
     });
   }
@@ -152,9 +165,13 @@ export class SessionBindings {
     if (binding.profileRevision !== this.profileRevision)
       throw new SessionBindingError("profile_changed");
     if (binding.expires <= this.clock()) throw new SessionBindingError("conversation_expired");
-    this.#validateTarget(binding.target);
-    const current = await this.host.inspectSession(this.agentId, binding.target.key);
-    if (!sameTarget(current, binding.target)) throw new SessionBindingError("session_missing_or_replaced");
+    await this.#assertTarget(binding.target);
+  }
+
+  async #assertTarget(target) {
+    this.#validateTarget(target);
+    const current = await this.host.inspectSession(this.agentId, target.key);
+    if (!sameTarget(current, target)) throw new SessionBindingError("session_missing_or_replaced");
   }
 
   #public(binding) {

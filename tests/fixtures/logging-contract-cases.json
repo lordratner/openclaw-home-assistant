@@ -1,0 +1,89 @@
+[
+  {
+    "code": "backend_auth_failed",
+    "category": "authentication"
+  },
+  {
+    "code": "unauthorized",
+    "category": "authentication"
+  },
+  {
+    "code": "missing-provider-auth",
+    "category": "authentication"
+  },
+  {
+    "code": "invalid_audio_metadata",
+    "category": "validation"
+  },
+  {
+    "code": "invalid_json",
+    "category": "protocol"
+  },
+  {
+    "code": "request_conflict",
+    "category": "policy"
+  },
+  {
+    "code": "job_capacity",
+    "category": "capacity"
+  },
+  {
+    "code": "job_timeout",
+    "category": "timeout"
+  },
+  {
+    "code": "cancel_requested",
+    "category": "cancelled"
+  },
+  {
+    "code": "synthesis_failed",
+    "category": "provider"
+  },
+  {
+    "code": "provider_error",
+    "category": "provider"
+  },
+  {
+    "code": "no_speech",
+    "category": "no_speech"
+  },
+  {
+    "code": "unknown_error",
+    "category": "unknown"
+  },
+  {
+    "code": "unknown_error",
+    "status": 401,
+    "category": "authentication"
+  },
+  {
+    "code": "unknown_error",
+    "status": 403,
+    "category": "authentication"
+  },
+  {
+    "code": "unknown_error",
+    "status": 429,
+    "category": "rate_limit"
+  },
+  {
+    "code": "unknown_error",
+    "status": 503,
+    "category": "provider"
+  },
+  {
+    "code": "unknown_error",
+    "provider_code": "insufficient_audio_activity",
+    "category": "no_speech"
+  },
+  {
+    "code": "unknown_error",
+    "provider_code": "quota_exceeded",
+    "category": "rate_limit"
+  },
+  {
+    "code": "unknown_error",
+    "provider_code": "authentication_error",
+    "category": "authentication"
+  }
+]

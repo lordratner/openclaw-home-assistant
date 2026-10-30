@@ -1,7 +1,7 @@
 # Installation, upgrade and rollback — development candidate
 
 This is a review procedure, **not evidence that a live installation was run**.
-The current artifacts are 0.0.1-dev.0 and must remain a controlled canary until
+The current bridge candidate is 0.0.1-dev.10 and must remain a controlled canary until
 [acceptance gates](ACCEPTANCE.md) pass. Tested pair: OC 2026.10.3 / Node 24.18.1,
 HA 2026.10.4 / Python 3.14.10, FFmpeg 7.1.5 on Linux. Other versions require a
 separate compatibility run; do not infer broad support from version ordering.
@@ -10,7 +10,7 @@ separate compatibility run; do not infer broad support from version ordering.
 
 1. Verify artifact hashes and record both source revisions. Keep the previous
    plugin/integration package and configuration available for rollback.
-2. Confirm the target OC/HA versions, FFmpeg availability on the OC host and
+2. Confirm the target OC/HA versions, FFmpeg availability if OpenClaw TTS is used on the OC host and
    supported public SDK exports. Do not edit installed core bundles to compensate.
 3. Choose an existing agent; decide whether it may use household-control tools
    and approval-requiring tools through its **normal OC policy**. Pairing does not
@@ -28,15 +28,15 @@ separate compatibility run; do not infer broad support from version ordering.
 After approval, install the reviewed local archive without silently enabling it:
 
 ```sh
-openclaw plugins install --no-enable /review/path/lordratner-openclaw-home-assistant-0.0.1-dev.0.tgz
+openclaw plugins install --no-enable /review/path/lordratner-openclaw-home-assistant-0.0.1-dev.10.tgz
 ```
 
 Use the normal installation-policy review; do not bypass a rejection. Preserve
 existing plugin allow/deny entries. Merge the selected-agent settings from the
-README, enable this plugin, and explicitly grant
+README, enable this plugin, and, if using OC conversation, explicitly grant
 `plugins.entries.openclaw-home-assistant.hooks.allowConversationAccess=true`.
 Provider credentials stay in the already configured native OC auth system.
-The service reports `audio_normalizer_unavailable` if FFmpeg cannot start.
+Only the TTS stage reports `audio_normalizer_unavailable` if FFmpeg cannot start; pairing, conversation and STT remain available.
 
 Validate the configuration using the target version's supported validation
 surface before activation. If a Gateway restart is required, explain impact and
@@ -111,3 +111,15 @@ Archive-content checks and source-loaded native proofs are not equivalent to a
 successful package-install/upgrade/rollback on the real targets. Capture those
 results separately. No live installation, provider charge, restart or audible
 playback is authorized or claimed by this development checkpoint.
+
+## Structured logging upgrade (bridge dev.9 + HA dev.5)
+
+These candidates add the [logging contract](LOGGING.md), with no configuration
+migration, new credentials or new privileges. Install only through the separately
+approved file/package path, preserving pairing, native history and prior archives.
+OC code needs its normal supported plugin reload after the active turn settles;
+HA Python code replacement needs a Core restart, not merely a config-entry reload.
+A Gateway/server reboot is not required by the logging design. Keep activation
+authority separate, verify the actual loaded versions and safe diagnostic output,
+then retest a normal voice request, clarification/stop/timeout and long answer.
+Synthetic/native tests are not physical-audio or deployed-logging acceptance.

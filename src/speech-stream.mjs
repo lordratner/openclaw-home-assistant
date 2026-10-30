@@ -3,6 +3,8 @@
  * This adapter supports progressive audio per sentence, then buffered sentence
  * fallback. It never replays a partially delivered segment or an agent turn.
  */
+import { annotateFailure, failureSummary, resultFailure } from "./observability.mjs";
+
 export class SpeechStreamError extends Error {
   constructor(code) { super(code); this.code = code; }
 }
@@ -64,7 +66,7 @@ function unsupported(result) {
 }
 
 export async function* speechEvents(textStream, { host, signal, maxAudioBytes = 32 * 1024 * 1024,
-  maxChunkBytes = 32768, textLimits = {}, allowFormatChange = false }) {
+  maxChunkBytes = 32768, textLimits = {}, allowFormatChange = false, timing, diagnostics = timing?.span?.owner }) {
   if (!Number.isInteger(maxAudioBytes) || maxAudioBytes < 1 ||
       !Number.isInteger(maxChunkBytes) || maxChunkBytes < 1 || maxChunkBytes > 32768)
     throw new TypeError("invalid_audio_limits");
@@ -72,7 +74,10 @@ export async function* speechEvents(textStream, { host, signal, maxAudioBytes = 
   let streamingUnsupported = false;
   for await (const text of sentenceSegments(textStream, { ...textLimits, signal })) {
     checkAbort(signal);
-    let result, reader;
+    timing?.mark("first_synthesis_request");
+    timing?.segment("request", segment);
+    let result, reader, primaryFailure;
+    diagnostics?.event("tts", "segment", "started", { segments: segment });
     const segmentStartBytes = totalAudio;
     try {
       if (!streamingUnsupported) {
@@ -82,12 +87,15 @@ export async function* speechEvents(textStream, { host, signal, maxAudioBytes = 
           await result.release?.();
           result = undefined;
           streamingUnsupported = true;
-        } else if (!result?.success) throw new SpeechStreamError("synthesis_failed");
+          diagnostics?.event("tts", "selection", "fallback", { reason: "unsupported_for_streaming", mode: "buffered" }, "info");
+        } else if (!result?.success) throw annotateFailure(new SpeechStreamError("synthesis_failed"),
+          resultFailure(result, { stage: "synthesis_request" }));
       }
       const mode = streamingUnsupported ? "sentence_buffered" : "sentence_progressive";
       if (streamingUnsupported) result = await host.buffer(text);
       checkAbort(signal);
-      if (!result?.success) throw new SpeechStreamError("synthesis_failed");
+      if (!result?.success) throw annotateFailure(new SpeechStreamError("synthesis_failed"),
+        resultFailure(result, { stage: "synthesis_request" }));
       if (!result.outputFormat || !result.fileExtension) throw new SpeechStreamError("missing_audio_format");
       const nextFormat = JSON.stringify([result.outputFormat, result.fileExtension]);
       if (format && format !== nextFormat && !allowFormatChange) throw new SpeechStreamError("audio_format_changed");
@@ -97,6 +105,7 @@ export async function* speechEvents(textStream, { host, signal, maxAudioBytes = 
         provider: result.provider, model: result.providerModel };
       const emitBytes = function* (bytes) {
         if (!(bytes instanceof Uint8Array)) throw new SpeechStreamError("invalid_audio_chunk");
+        if (bytes.length) { timing?.mark("first_source_audio"); timing?.segment("source_audio", segment); }
         totalAudio += bytes.length;
         if (totalAudio > maxAudioBytes) throw new SpeechStreamError("audio_limit");
         for (const part of boundedBytes(bytes, maxChunkBytes)) {
@@ -109,7 +118,9 @@ export async function* speechEvents(textStream, { host, signal, maxAudioBytes = 
       } else {
         if (!result.audioStream) throw new SpeechStreamError("missing_audio_stream");
         reader = result.audioStream.getReader();
-        const cancel = () => { void reader.cancel(signal.reason).catch(() => {}); };
+        const cancel = () => { void reader.cancel(signal.reason).catch((error) => {
+          diagnostics?.event("tts", "provider_cancel", "cleanup_failed", failureSummary(error, { stage: "cleanup", confirmed: false }), "warn");
+        }); };
         signal?.addEventListener("abort", cancel, { once: true });
         try {
           while (true) {
@@ -123,14 +134,29 @@ export async function* speechEvents(textStream, { host, signal, maxAudioBytes = 
       }
       if (totalAudio === segmentStartBytes) throw new SpeechStreamError("empty_audio");
       yield { type: "audio_end", sequence: ++sequence, segment };
+      timing?.segment("completed", segment);
+      diagnostics?.event("tts", "segment", "completed", { segments: segment, bytes: totalAudio-segmentStartBytes,
+        mode: streamingUnsupported ? "buffered" : "progressive" });
       segment++;
+    } catch (error) {
+      primaryFailure = error;
+      throw annotateFailure(error, { stage: "synthesis_request" });
     } finally {
       // Stream ownership is released on success, failure and early consumer close.
+      let cleanupFailure;
+      const cleanup = async (fn, fatal = true) => {
+        try { await fn(); }
+        catch (error) {
+          if (fatal) cleanupFailure ??= error;
+          diagnostics?.event("tts", "provider_release", "cleanup_failed", failureSummary(error, { stage: "cleanup" }), "warn");
+        }
+      };
       if (reader) {
-        await reader.cancel().catch(() => {});
-        reader.releaseLock();
-      } else await result?.audioStream?.cancel().catch(() => {});
-      await result?.release?.();
+        await cleanup(() => reader.cancel(), false);
+        await cleanup(() => reader.releaseLock());
+      } else await cleanup(() => result?.audioStream?.cancel(), false);
+      await cleanup(() => result?.release?.());
+      if (cleanupFailure && !primaryFailure) throw annotateFailure(cleanupFailure, { stage: "cleanup" });
     }
   }
   checkAbort(signal);

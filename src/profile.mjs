@@ -21,8 +21,10 @@ export function resolveProfile(raw, { cfg, agentIds, normalizeThinking }) {
   const agentId = optional(raw.agentId, 128);
   if (!agentId || !agentIds.includes(agentId)) throw new ProfileError("selected_agent_not_found");
   const conversation = object(raw.conversation ?? {}, ["model", "thinking", "fast"]);
-  const stt = object(raw.stt ?? {}, ["provider", "model", "language"]);
-  const tts = object(raw.tts ?? {}, ["provider", "model", "voice"]);
+  const stt = object(raw.stt ?? {}, ["provider", "model", "language", "batch", "languages", "defaultLanguage"]);
+  const tts = object(raw.tts ?? {}, ["provider", "model", "voice", "languages", "defaultLanguage"]);
+  const batch = stt.batch === undefined ? undefined : object(stt.batch, ["provider", "model"]);
+  if (batch && optional(batch.model) && !optional(batch.provider)) throw new ProfileError("stt_provider_required_for_model");
   if (optional(stt.model) && !optional(stt.provider)) throw new ProfileError("stt_provider_required_for_model");
   const model = optional(conversation.model);
   const thinking = optional(conversation.thinking, 32);
@@ -35,13 +37,24 @@ export function resolveProfile(raw, { cfg, agentIds, normalizeThinking }) {
     throw new ProfileError("invalid_languages");
   const defaultLanguage = raw.defaultLanguage ?? languages[0];
   if (!languages.includes(defaultLanguage)) throw new ProfileError("invalid_default_language");
+  const stageLanguages = (stage) => {
+    if (stage.languages === undefined && stage.defaultLanguage === undefined) return {};
+    const values = stage.languages ?? languages;
+    if (!Array.isArray(values) || !values.length || values.length > 100 || values.some((v) =>
+      typeof v !== "string" || v.length > 32 || !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(v)))
+      throw new ProfileError("invalid_languages");
+    const preferred = stage.defaultLanguage ?? (values.includes(defaultLanguage) ? defaultLanguage : values[0]);
+    if (!values.includes(preferred)) throw new ProfileError("invalid_default_language");
+    return { languages: Object.freeze([...new Set(values)]), defaultLanguage: preferred };
+  };
   const persistentSession = optional(raw.persistentSession);
   if (persistentSession && !persistentSession.startsWith("agent:" + agentId + ":"))
     throw new ProfileError("persistent_agent_mismatch");
   const profile = { id: "default", agentId, ...(persistentSession ? { persistentSession } : {}),
     conversation: { ...(model ? { model } : {}), ...(thinking ? { thinking } : {}), ...(fast === undefined ? {} : { fast }) },
-    stt: Object.fromEntries(["provider", "model", "language"].flatMap((key) => optional(stt[key]) ? [[key, stt[key]]] : [])),
-    tts: Object.fromEntries(["provider", "model", "voice"].flatMap((key) => optional(tts[key]) ? [[key, tts[key]]] : [])),
+    stt: { ...Object.fromEntries(["provider", "model", "language"].flatMap((key) => optional(stt[key]) ? [[key, stt[key]]] : [])),
+      ...stageLanguages(stt), ...(batch ? { batch: Object.freeze(Object.fromEntries(["provider", "model"].flatMap((key) => optional(batch[key]) ? [[key, batch[key]]] : []))) } : {}) },
+    tts: { ...Object.fromEntries(["provider", "model", "voice"].flatMap((key) => optional(tts[key]) ? [[key, tts[key]]] : [])), ...stageLanguages(tts) },
     languages: [...new Set(languages)], defaultLanguage };
   // Hash only voice-relevant, non-secret authored settings, not resolved keys.
   const nativeFacts = {

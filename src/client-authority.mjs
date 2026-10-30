@@ -2,6 +2,7 @@
  * Only an authenticated owner/admin adapter may expose issue/list/revoke.
  */
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { failureSummary } from "./observability.mjs";
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 const secret = () => randomBytes(32).toString("base64url");
 const compare = (a, b) => typeof a === "string" && /^[a-f0-9]{64}$/.test(a) &&
@@ -15,10 +16,10 @@ export class VoiceClients {
   #leases = new Map();
   #revocations = new Set();
   #closed = false;
-  constructor({ state, agentId, profileId, clock = Date.now, maxClients = 16 }) {
+  constructor({ state, agentId, profileId, clock = Date.now, maxClients = 16, diagnostics }) {
     if (!agentId || !profileId || !Number.isInteger(maxClients) || maxClients < 1)
       throw new TypeError("invalid_authority_config");
-    Object.assign(this, { state, agentId, profileId, clock, maxClients });
+    Object.assign(this, { state, agentId, profileId, clock, maxClients, diagnostics });
     this.namespace = "clients:" + digest(JSON.stringify([agentId, profileId]));
   }
 
@@ -104,14 +105,19 @@ export class VoiceClients {
       return true;
     });
     if (revoked) {
+      this.diagnostics?.event("authority", "revocation", "committed", { confirmed: true }, "info");
       for (const controller of this.#leases.get(principal) ?? []) controller.abort(new ClientAuthorityError("client_revoked"));
-      await Promise.allSettled([...this.#revocations].map((listener) => listener(principal)));
+      const outcomes = await Promise.allSettled([...this.#revocations].map((listener) => listener(principal)));
+      for (const outcome of outcomes) if (outcome.status === "rejected")
+        this.diagnostics?.event("authority", "revocation_listener", "cleanup_failed",
+          failureSummary(outcome.reason, { stage: "cleanup", confirmed: false }), "warn");
     }
     return revoked;
   }
 
   close() {
     this.#closed = true;
+    this.diagnostics?.event("authority", "leases", "cancelled", { count: this.#leases.size, confirmed: false });
     for (const leases of this.#leases.values()) for (const controller of leases)
       controller.abort(new ClientAuthorityError("backend_stopping"));
     this.#leases.clear(); this.#revocations.clear();

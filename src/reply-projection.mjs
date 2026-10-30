@@ -7,7 +7,21 @@ export class ReplyProjection {
   #current = null;
   #emit;
   #bytes = 0;
-  constructor(emit) { this.#emit = emit; }
+  #notices = new Set();
+  #errorReply = false;
+  constructor(emit, { diagnostics } = {}) { this.#emit = emit; this.diagnostics = diagnostics; }
+  get errorReply() { return this.#errorReply; }
+  #notice(payload, info) {
+    const reason = payload.isReasoning ? "reasoning_filtered" : payload.isFallbackNotice ? "fallback_notice_filtered" : info?.kind === "tool" ? "tool_result_filtered" : null;
+    if (reason && !this.#notices.has(reason)) {
+      this.#notices.add(reason);
+      this.diagnostics?.event("projection", "filter", "suppressed", { reason });
+    }
+    if (payload.isError === true && !this.#errorReply && !reason) {
+      this.#errorReply = true;
+      this.diagnostics?.event("conversation", "native_reply", "failed", { reason: "native_reply_error", error_reply: true }, "warn");
+    }
+  }
   #enqueue(operation) {
     const task = this.#tail.then(operation);
     this.#tail = task;
@@ -32,6 +46,7 @@ export class ReplyProjection {
   }
   partial(payload) {
     return this.#enqueue(async () => {
+      this.#notice(payload);
       if (payload.isReasoning || payload.isFallbackNotice) return;
       const text = payload.text;
       if (typeof text !== "string") {
@@ -45,6 +60,7 @@ export class ReplyProjection {
   }
   final(payload, info) {
     return this.#enqueue(async () => {
+      this.#notice(payload, info);
       if (payload.isReasoning || payload.isFallbackNotice || info?.kind === "tool") return;
       const text = payload.text;
       if (typeof text !== "string" || !text.trim()) return;
@@ -59,9 +75,9 @@ export class ReplyProjection {
       throw new JobError("reply_projection_conflict");
     });
   }
-  async result() {
+  async result({ continueConversation = false } = {}) {
     await this.#tail;
-    return { text: this.#messages.map((message) => message.text).join("\n\n"),
-      continue_conversation: false };
+    const text = this.#messages.map((message) => message.text).join("\n\n");
+    return { text, continue_conversation: continueConversation === true && !!text.trim() };
   }
 }

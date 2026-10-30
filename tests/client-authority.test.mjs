@@ -5,6 +5,21 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { StateFile } from "../src/state-file.mjs";
 import { VoiceClients } from "../src/client-authority.mjs";
+import { Diagnostics } from "../src/observability.mjs";
+
+test("revocation commit and cleanup failure are distinct, without logging any credential or label", async () => {
+  const diagnostics = new Diagnostics();
+  const { authority } = await setup({ diagnostics });
+  const code = await authority.issue("PRIVATE_PAIR_LABEL");
+  const client = await authority.claim(code.pairing_code);
+  authority.onRevoke(async () => { throw new Error("PRIVATE_CLEANUP_ERROR"); });
+  assert.equal(await authority.revoke(client.client_id), true);
+  await assert.rejects(authority.authenticate(client.client_token, "tts"));
+  const data = diagnostics.snapshot();
+  assert.ok(data.recent.some((e) => e.operation === "revocation" && e.phase === "committed"));
+  assert.ok(data.failures.some((e) => e.operation === "revocation_listener"));
+  for (const secret of ["PRIVATE", client.client_token, client.client_id, code.pairing_code]) assert.ok(!JSON.stringify(data).includes(secret));
+});
 
 async function setup(options = {}) {
   const path = join(await mkdtemp(join(tmpdir(), "voice-auth-")), "state.json");

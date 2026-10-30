@@ -13,6 +13,32 @@ export default {
   register(api) {
     const controls = new VoiceRunControls();
     let forbiddenExecutions = 0;
+    let streamObserved;
+    let streamInputDone = false;
+    const streamEvents = [];
+    api.registerRealtimeTranscriptionProvider({
+      id: "fixture-stream", label: "Synthetic finite transcription", defaultModel: "fixture-stream-v1",
+      utterance: { formats: [{ encoding: "pcm_s16le", sampleRate: 16000, channels: 1 }], models: ["fixture-stream-v1"] },
+      isConfigured: () => true,
+      createSession(request) {
+        if (!request.utterance) throw new Error("finite fixture requires explicit utterance mode");
+        return {
+          async connect() { streamEvents.push("connected"); },
+          sendAudio(chunk) {
+            request.utterance.signal.throwIfAborted();
+            streamEvents.push({ bytes: chunk.length, inputDone: streamInputDone });
+            streamObserved?.();
+          },
+          async writeAudio(chunk) { this.sendAudio(chunk); },
+          async finishInput() {
+            if (!streamInputDone) throw new Error("finish called before end of input");
+            streamEvents.push("finished");
+            return { text: "SYNTHETIC_STREAM_COMPLETE" };
+          },
+          close() { streamEvents.push("closed"); }, isConnected: () => true,
+        };
+      },
+    });
     api.registerAgentHarness({ id: "voice-lock-proof", label: "Synthetic locked session proof",
       autoSelection: { providerIds: [] }, delegatedExecutionPluginIds: ["openclaw-home-assistant"],
       supports: () => ({ supported: false }), runAttempt: async () => { throw new Error("locked fixture must never dispatch"); } });
@@ -139,6 +165,24 @@ export default {
           const empty = await hostAdapter.transcribe((async function* () {})(), { language: "en", signal: new AbortController().signal });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ transcript, empty, remaining: await readdir(hostAdapter.tempRoot) })); return true;
+        }
+        if (request.kind === "host_stt_stream") {
+          const streamHost = new OpenClawHost(api, { agentId,
+            stt: { provider: "fixture-stream", model: "fixture-stream-v1" } });
+          streamEvents.length = 0; streamInputDone = false;
+          const observed = new Promise((resolve) => { streamObserved = resolve; });
+          async function* input() {
+            yield Buffer.alloc(3200);
+            await observed;
+            yield Buffer.alloc(1600);
+            streamInputDone = true;
+          }
+          try {
+            const result = await streamHost.transcribe(input(), { language: "en", signal: AbortSignal.timeout(10000) });
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ result, events: streamEvents, capabilities: streamHost.sttCapabilities() }));
+          } finally { streamHost.close(); streamObserved = undefined; }
+          return true;
         }
         if (request.kind === "pairing_issue" || request.kind === "revoke") {
           const result = request.kind === "pairing_issue" ? await clients.issue("Synthetic HA client") : await clients.revoke(request.client_id);

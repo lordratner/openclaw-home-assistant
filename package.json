@@ -1,6 +1,6 @@
 {
   "name": "@lordratner/openclaw-home-assistant",
-  "version": "0.0.1-dev.0",
+  "version": "0.0.1-dev.10",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -9,7 +9,8 @@
   },
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "test:native-pair": "node tests/isolated-gateway-proof.mjs"
+    "test:native-pair": "node tests/isolated-gateway-proof.mjs",
+    "check": "node scripts/validate-package.mjs"
   },
   "description": "OpenClaw Home Assistant plugin: agent-neutral, streaming-first speech and conversation backend",
   "openclaw": {

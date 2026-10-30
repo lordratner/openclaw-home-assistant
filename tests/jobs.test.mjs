@@ -1,15 +1,86 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, copyFile } from "node:fs/promises";
+import { mkdtemp, readFile, copyFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { Jobs } from "../src/jobs.mjs";
 import { StateFile } from "../src/state-file.mjs";
 import { requestId, requestTime, fingerprint } from "../src/request-identity.mjs";
+import { Diagnostics, annotateFailure, failureSummary } from "../src/observability.mjs";
 
 const collect = async (source) => { const values = []; for await (const value of source) values.push(value); return values; };
 const deferred = () => { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; };
+
+test("corrupt plugin metadata is classified as storage without preserving its contents", async () => {
+  const fixture = await setup();
+  await writeFile(fixture.path, "{PRIVATE_BROKEN_METADATA");
+  await assert.rejects(fixture.jobs.diagnostics(), (error) => {
+    const summary = failureSummary(error);
+    assert.equal(summary.reason, "invalid_voice_state_json");
+    assert.equal(summary.category, "storage");
+    assert.ok(!JSON.stringify(summary).includes("PRIVATE"));
+    return true;
+  });
+});
+
+test("native STT failure classification survives durable restart without raw vendor error", async () => {
+  const diagnostics = new Diagnostics();
+  const fixture = await setup({ diagnostics });
+  let calls = 0;
+  const input = fixture.input(async ({ timing }) => {
+    calls++;
+    timing.mark("transcription_started");
+    throw annotateFailure(Object.assign(new Error("PRIVATE_AUDIO_TOKEN_URL"), { status: 401 }),
+      { stage: "stt_transcription", provider: "elevenlabs" });
+  }, { kind: "stt" });
+  const receipt = await fixture.jobs.admit(input);
+  fixture.jobs.start("client-a", receipt.job_id);
+  const status = await fixture.jobs.wait("client-a", receipt.job_id);
+  assert.equal(status.code, "job_failed");
+  assert.equal(status.failure.category, "authentication");
+  assert.equal(status.failure.http_status, 401);
+  assert.equal(status.failure.stage, "stt_transcription");
+  assert.equal(typeof fixture.jobs.diagnostics, "function");
+  assert.equal((await fixture.jobs.diagnostics())[0].failure.provider, "elevenlabs");
+  const restoredPath = join(await mkdtemp(join(tmpdir(), "ha-error-restart-")), "state.json");
+  await copyFile(fixture.path, restoredPath);
+  const restored = new Jobs({ ...fixture.options, state: new StateFile(restoredPath) });
+  assert.deepEqual((await restored.status("client-a", receipt.job_id)).failure, status.failure);
+  assert.equal(calls, 1);
+  assert.ok(!(await readFile(restoredPath, "utf8")).includes("PRIVATE_AUDIO_TOKEN_URL"));
+  assert.ok(!JSON.stringify(diagnostics.snapshot()).includes("PRIVATE_AUDIO_TOKEN_URL"));
+});
+
+test("receipt write failure remains observable even when the failure receipt cannot commit", async () => {
+  let data = {}, fail = false, calls = 0;
+  const diagnostics = new Diagnostics();
+  const state = { identity: "synthetic-write-failure", async read(fn) { return fn(data); },
+    async transaction(fn) {
+      if (fail) throw Object.assign(new Error("PRIVATE_DISK_PATH"), { code: "EIO" });
+      const next = structuredClone(data), value = await fn(next); data = next; return value;
+    } };
+  const fixture = await setup({ state, diagnostics });
+  const receipt = await fixture.jobs.admit(fixture.input(async () => { calls++; }));
+  fail = true;
+  fixture.jobs.start("client-a", receipt.job_id);
+  await assert.rejects(fixture.jobs.wait("client-a", receipt.job_id));
+  assert.equal(calls, 0);
+  assert.ok(diagnostics.snapshot().failures.some((e) => e.operation === "persistence" && e.category === "storage"));
+  assert.ok(!JSON.stringify(diagnostics.snapshot()).includes("PRIVATE_DISK_PATH"));
+});
+
+test("job timeout keeps a specific classification and never claims confirmed remote cancellation", async () => {
+  const f = await setup({ maxJobMs: 5 });
+  const receipt = await f.jobs.admit(f.input(({ signal }) => new Promise((_, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  })));
+  f.jobs.start("client-a", receipt.job_id);
+  const status = await f.jobs.wait("client-a", receipt.job_id);
+  assert.equal(status.failure.category, "timeout");
+  assert.equal(status.failure.reason, "job_timeout");
+  assert.equal(status.cancellation_confirmed, false);
+});
 async function setup(overrides = {}) {
   const path = join(await mkdtemp(join(tmpdir(), "ha-jobs-")), "state.json");
   let now = 1000000;

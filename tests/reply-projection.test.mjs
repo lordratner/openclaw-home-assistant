@@ -1,6 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ReplyProjection } from "../src/reply-projection.mjs";
+import { Diagnostics } from "../src/observability.mjs";
+
+test("native error replies and filtered lanes have metadata, never logged reply content", async () => {
+  const diagnostics = new Diagnostics();
+  const projection = new ReplyProjection(async () => {}, { diagnostics });
+  for (let i = 0; i < 100; i++) await projection.partial({ text: "PRIVATE_REASONING", isReasoning: true });
+  await projection.final({ text: "PRIVATE_PROVIDER_ERROR", isError: true }, { kind: "final" });
+  assert.equal(projection.errorReply, true);
+  assert.equal((await projection.result()).text, "PRIVATE_PROVIDER_ERROR");
+  assert.equal(diagnostics.snapshot().recent.length, 2);
+  assert.equal(diagnostics.snapshot().failures[0].error_reply, true);
+  assert.ok(!JSON.stringify(diagnostics.snapshot()).includes("PRIVATE"));
+});
 
 test("stream snapshots plus final delivery produce each word exactly once", async () => {
   const events = [];
@@ -50,4 +63,14 @@ test("buffered Unicode answers are wire-chunked without losing characters", asyn
   assert.ok(events.every((event) => Buffer.byteLength(event.text) <= 8192));
   assert.equal(events.map((event) => event.text).join(""), answer);
   assert.equal((await projection.result()).text, answer);
+});
+
+test("only explicit continuation with speakable text requests listening, never punctuation", async () => {
+  const projection = new ReplyProjection(async () => {});
+  assert.equal((await projection.result({ continueConversation: true })).continue_conversation, false);
+  await projection.final({ text: "Which light?" }, { kind: "final" });
+  assert.equal((await projection.result()).continue_conversation, false);
+  assert.equal((await projection.result({ continueConversation: true })).continue_conversation, true);
+  assert.equal((await projection.result({ continueConversation: false })).continue_conversation, false);
+  assert.equal((await projection.result({ continueConversation: "true" })).continue_conversation, false);
 });

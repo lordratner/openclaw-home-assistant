@@ -1,3 +1,17 @@
+# Current product candidate evidence — 2026-10-29
+
+Bridge dev10 / HAdev6, protocol1.2. Full module suites138OC+90HA passed. Added
+regressions cover missing optional dependencies, native-policy batch alternatives
+and legacy explicit selection, independent stage languages/readiness, duplicate
+and concurrent pairing, v1 migration, same-backend URL moves, wrong-backend/agent
+reauth guards and native buffered HA TTS with unavailable OC TTS. Offline metadata/
+translation/package validators passed. Disposable native source pair passed;
+archive-loaded proof and hashes are recorded separately with packaged artifacts.
+
+No new real-provider/device acceptance, installed activation, public CI success or
+formal quality tier is claimed. See PRODUCT.md, COMPATIBILITY.md and QUALITY.md.
+The dated sections below are historical evidence, not current deployment status.
+
 # Acceptance evidence — 2026-10-28 development candidate
 
 Evidence levels are distinct. Automated checks are not the 42 planned acceptance
@@ -88,3 +102,54 @@ rejected that because only a registered harness owner may create/patch locked
 sessions. The proof now registers its own explicit-only synthetic harness and
 creates only its own locked session through the public API. It does not loosen
 ownership, patch core, or alter the production plugin's authority.
+
+## 2026-10-28 next-turn settings/timing checkpoint
+
+Candidate 0.0.1-dev.1: 81 OC + 41 HA tests pass; extended native proof verifies
+in-flight settings isolation, next-turn model/thinking switch on the same handle,
+retry recovery without redispatch, eight owner-RPC denials, content-free timing,
+and continued early decoded audio. This is disposable-runtime proof only. Live
+installation, realistic latency benchmarking and acoustic start timing remain
+separate acceptance gates. See docs/TIMING.md for measurement boundaries.
+# dev.5 clarification continuation gate
+
+The earlier native-control acceptance did not prove automatic satellite
+re-listening. dev.4 returned false for every projected reply, including spoken
+clarifications. dev.5 adds explicit turn-scoped `voice_conversation` intent and
+passes it through the existing terminal/result flag.
+
+Local coverage: default false, true clarification, explicit false/stop,
+follow-up reset, empty speech, punctuation not control, malformed arguments,
+cross-session/incarnation isolation, cancellation, stale invocation, closed
+lease and failed dispatch. The opt-in native-pair runner also invokes the
+OC-owned `tests/native_continuation_proof.py` against the unchanged HA checkout:
+real model tool execution -> wire flag -> HA ConversationResult, with/without
+native Assist, same conversation handle, and identical-request replay.
+
+Activation still requires owner approval for the installed plugin and any safe
+restart. Then verify ordinary real-Jarvis clarification and an owner-observed
+satellite answer without a second wake word; finish with stop/completed-answer
+behavior. Do not equate a synthetic model result with hardware acceptance.
+
+## Stale binding recovery candidate — 2026-10-29
+
+Bridge dev.7 + HA dev.4: scoped regression coverage includes retained-ID profile
+change/expiry, same native history/mode, caller/target fences, overlap/cancellation
+and known-job no-redispatch even when replay/status fails before text. Native
+HA2026.10.4 retains the satellite ID through the legacy null-ID error and then
+processes clarification/follow-up with the replacement transport. The isolated
+production-plugin/HA paired proof also passes with synthetic model/speech
+providers. These are local/disposable proofs, not installation or physical
+acceptance of these versions. Live activation and bathroom retesting remain
+separate gates.
+
+## Comprehensive logging candidate — 2026-10-29
+
+OCdev.9 + HAdev.5: all36source modules reviewed, shared diagnostic contract and
+per-module audit recorded. OC125tests and HA73tests pass. Native paired proof
+checks bounded rings, common request/job/span correlation, no private canaries,
+normal/hidden-target native controls, continuation/stop/recovery and early audio.
+Fault injection covers auth/status, metadata/receipt/storage, timeout, decoder
+races, primary-vs-cleanup errors, startup diagnostics and actual action receipt
+correlation. This is source/fixture proof, not deployed logging or physical
+acceptance. See [logging guide](LOGGING.md).

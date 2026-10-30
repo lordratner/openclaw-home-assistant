@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { canonicalSpeech } from "../src/audio-stream.mjs";
+import { Diagnostics, failureSummary } from "../src/observability.mjs";
 
 const collect = async (source) => { const values = []; for await (const value of source) values.push(value); return values; };
 const text = async function* () { yield "First. Second."; };
@@ -12,6 +13,21 @@ const encode = (format, rate) => {
   assert.equal(result.status, 0);
   return result.stdout;
 };
+
+test("decoder startup/exit failure records a safe reason without stderr or binary path", async () => {
+  const diagnostics = new Diagnostics();
+  const host = { stream: unsupported, buffer: async () => ({ success: true,
+    fileExtension: ".wav", outputFormat: "wav", audioBuffer: encode("wav", 16000) }) };
+  let summary;
+  await assert.rejects(async () => {
+    try { await collect(canonicalSpeech(text(), { host, binary: "/nonexistent/PRIVATE_BINARY", diagnostics })); }
+    catch (error) { summary = failureSummary(error); throw error; }
+  });
+  assert.equal(summary.reason, "audio_normalizer_unavailable");
+  assert.equal(summary.stage, "normalization");
+  assert.ok(diagnostics.snapshot().recent.some((e) => e.operation === "decoder"));
+  assert.ok(!JSON.stringify(diagnostics.snapshot()).includes("PRIVATE_BINARY"));
+});
 
 test("different self-describing source containers become one continuous correctly sampled WAV stream", async () => {
   const buffers = [encode("wav", 16000), encode("flac", 48000)];

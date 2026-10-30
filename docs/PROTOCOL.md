@@ -1,7 +1,6 @@
 # Paired voice protocol v1
 
-Implemented contract: protocol major 1, minor 0. Both products ship together as
-0.0.1-dev.0. This is a development candidate, not a claim of live acceptance.
+Implemented contract: protocol major 1, minor 2. OC candidate 0.0.1-dev.10 keeps the existing HA wire contract. This is a development candidate, not a claim of live acceptance.
 
 ## Ownership and transport
 
@@ -26,6 +25,9 @@ Owner Gateway RPC methods require `operator.admin`:
 | Method | Parameters |
 | --- | --- |
 | `openclaw_home_assistant.status` | `{}` |
+| `openclaw_home_assistant.inference.get` | `{}` |
+| `openclaw_home_assistant.inference.update` | `expected_revision`, nonempty `patch` with only `model`, `thinking`, `fast`; null resets a field |
+| `openclaw_home_assistant.diagnostics` | optional integer `limit` (1–32, default 20) |
 | `openclaw_home_assistant.pairing.issue` | optional `label` |
 | `openclaw_home_assistant.clients.list` | `{}` |
 | `openclaw_home_assistant.clients.revoke` | `client_id` |
@@ -75,6 +77,14 @@ capabilities refresh every thirty seconds. Profile/agent changes cannot silently
 retarget an old conversation. Reload stops/fences old owned work; it does not
 promise uninterrupted completion across configuration changes.
 
+Owner inference updates are different: their independent inference revision
+does not change the profile/binding revision. Preferences are captured before
+new job admission and stored on its receipt; already-admitted exact-request
+retries use their original work and snapshot even after a preference update.
+Updates persist per agent/profile and do not mutate native session defaults.
+An update does not terminate active work. Bootstrap config edits retain their
+existing replacement semantics. See the README for reset/inherit precedence.
+
 ## Job events and recovery
 
 Every event contains `protocol_major`, `profile_revision`, `request_id`, `job_id`,
@@ -110,6 +120,13 @@ alarms. Native OC history and HA's own caches have separate retention policies.
 The plugin metadata file is capped at 8 MiB and requires a single Gateway owner
 process. Same-process reload generations share serialization; cross-process
 shared-state writers are unsupported. Unknown state versions fail closed.
+
+Additive `inference` and terminal `timing` fields are available on owned job
+status. The owner diagnostics method omits job result text and returns only
+bounded operational fields. Timings share the receipt retention/size bounds;
+per-job synthesis detail retains the first 16 segments. No new stream event type
+is required, so existing v1 clients remain compatible. Streaming HTTP responses
+send `X-Accel-Buffering: no`; honoring it remains a proxy responsibility.
 
 Cancellation immediately fences output. Some native buffered provider calls
 cannot be aborted; `cancellation_confirmed: false` is intentional and must not be
@@ -156,3 +173,90 @@ prompts, replies, audio and arbitrary backend extensions.
 Profile change, expired mapping, missing persistent target, revoked credential,
 request conflict, replay gap, capacity and provider failure are real errors,
 not excuses to silently start another agent turn or change provider policy.
+
+## Native Assist extension (protocol 1.1)
+
+See [native Assist](NATIVE-ASSIST.md#protocol-11-additions) for the optional native bundle, job tool events, one-time claims, result submission and failure/replay boundaries. No raw HA credentials or callback URL is sent to OpenClaw.
+
+## Stale voice-binding recovery (bridge dev.7 + HA dev.4)
+
+A native satellite may keep its HA chat ID after a profile change or idle expiry.
+An authenticated current-revision conversation open now rotates that caller's
+obsolete/expired transport handle under the same HA ID after validating its
+original native target. Mode, caller/agent ownership and native session/history
+are preserved. Old handles remain invalid; native target or owner-rebind
+mismatches are not silently repaired. Existing admitted jobs keep their receipts
+and recovery path even when the transport handle rotates.
+
+HA attempts one capability refresh/reopen only after an explicit pre-admission
+profile_changed, conversation_expired or conversation_not_found rejection. It
+keeps the same request UUID across safe attempts, and serializes requests for
+one native HA ID. Any observed event or known admitted job ID fences retry,
+including when same-job replay/status fails before text arrives. Transport
+uncertainty, authority/mode/target errors and a second rejection do not redispatch
+inference or device actions. Compatible follow-ups retain their mode and normal
+continuation behavior. Capability/voice changes do not require clearing Jarvis
+history or re-pairing.
+
+Local diagnostics may include allowlisted recovery_reason, failure_reason and
+failure_stage, never raw error text, prompts, audio, credentials or identity IDs.
+No new protocol fields, privileges or core/native-HA patches are required.
+
+## Safe diagnostic extension (logging candidates)
+
+Error/status/owner-diagnostic records may include a bounded `failure` object:
+allowlisted stage, reason/category, provider/status/system/exception metadata,
+classification source, ephemeral keyed fingerprint and bounded causes. Existing
+outward codes and scope requirements are unchanged; older clients may ignore
+these optional fields. The HA client retains safe metadata without logging speech
+or raw error bodies. Owner diagnostics additionally expose `observability`; during
+startup/storage failures, `ready`, `partial`, `startup_code` and
+`unavailable_sections` distinguish missing sections from empty successful results.
+See [logging contract](LOGGING.md). No new replay or retry authority is conveyed.
+
+## Additive product capabilities (protocol 1.2)
+
+`service: {instance_id, profile_id}` contains durable non-secret UUIDs, independent
+of URL, profile revision and scoped client credentials. Profile identity changes
+when the selected agent/profile changes, not when its voice or model changes.
+The backend stores identities in its normal metadata v1 document; existing
+clients/bindings/receipts are not rewritten or reset. Identity corruption fails
+closed rather than silently creating another identity.
+
+`stages.conversation`, `.stt` and `.tts` independently expose `state`, tri-state
+`available` and `verified`. `available:false` means a locally known blocker; null
+means native provider/account availability has not been established. Configured
+is not verified. A successful real operation records `verified_at` and
+`verification:last_operation`; it is historical evidence, not an uptime promise.
+Failures retain sanitized details and never cause automatic re-execution.
+
+STT/TTS advertise their own languages/default_language, explicitly marked
+`languages_source:configured`. They inherit legacy profile declarations unless
+overridden. The public host API does not provide universal provider language or
+account-access discovery. No paid startup probe is performed.
+
+HA config-entry v2 migrates history preference from data to options. Stable
+service identity replaces the credential-derived unique ID when available,
+without changing entry/entity IDs, token, selected mode or conversation history.
+Duplicate or concurrent pairing flows reject and revoke only the unused newly
+issued credential. Reauth/reconfigure reject a different backend/profile/agent.
+A legacy entry must establish identity at its original URL before a reauth move;
+normal reconfigure tests the current credential against the same backend.
+Legacy1.0/1.1 backends remain usable, with legacy URL+agent duplicate checking.
+
+`stt.batch` optionally selects a native batch provider/model. Empty object
+inherits native configured batch policy. Without an override, an SDK-identified
+batch-only provider/model keeps its explicit primary selection, including native
+request/auth options. An absent finite-input runtime uses native batch with that same selection.
+An empty `batch` object explicitly selects the inherited native batch policy. No
+vendor realtime-to-batch model alias or new provider transport is guessed.
+Native configuration determines any downstream provider fallback.
+
+The query action optionally accepts `tts_entity` to speak through an existing
+HA TTS engine. HA handles its buffered/streaming contract; OC-specific profile/
+action options are never sent to that engine. Satellite interaction uses its
+existing selected Assist pipeline. Neither path changes preferred pipelines.
+
+Startup cleans at most512 generated `stt-XXXXXX` directories older than24h under
+this profile's private audio root. Recent work, symlinks and unrelated directories
+are left alone. This is bounded startup cleanup, not an offline24h deletion SLA.

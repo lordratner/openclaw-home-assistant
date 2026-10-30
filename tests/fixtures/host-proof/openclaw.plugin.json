@@ -5,6 +5,7 @@
     "onStartup": true
   },
   "contracts": {
+    "realtimeTranscriptionProviders": ["fixture-stream"],
     "tools": [
       "voice_proof",
       "voice_forbidden"

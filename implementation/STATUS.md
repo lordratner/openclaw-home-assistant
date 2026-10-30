@@ -1,9 +1,47 @@
+# Current product candidate — 2026-10-29
+
+OCdev10 / HAdev6, protocol1.2: independent stage readiness, optional OC speech,
+explicit native batch fallback, stable service identity/deduplication, v2 HA
+migration and reconfigure/reauth, translations, mixed native HA speech and
+bounded stale-audio cleanup. Source-only; no installation/reload/restart in this
+workstream. Full module checks138OC+90HA passed. A disposable native source pair passed;
+source-matched archive qualification is recorded separately in the paired
+implementation evidence. Official public CI/provider/hardware gates stay open. Current deployment remains the
+earlier accepted pair. See docs/PRODUCT.md, COMPATIBILITY.md and QUALITY.md.
+
+## Historical checkpoints below
+
+# Admission diagnostics correction — 0.0.1-dev.2
+
+Live dev.1 tests found the public Jobs.admit wrapper omitted inference/timing
+arguments when forwarding to private admission. Execution snapshots still reached
+the host closure, but receipt settings and HTTP-level timestamps were absent.
+The two-line forwarding fix is implemented; the HTTP regression failed on dev.1
+then passed with the fix. All 81 OC tests and the native proof pass, explicitly
+asserting receipt revisions and request_received timestamps. HA needs no change.
+This correction is not yet installed live.
+
 # Current development checkpoint — 2026-10-28
 
 This supersedes checkpoint-1's implementation status, not its historical evidence.
 Local development and the two private-repository workflow were already authorized.
 Live deployment, service restarts, real-provider/audio canaries, public publication
 and unrelated upstream/core edits remain separate scopes.
+
+## Next-turn settings and timing candidate — 0.0.1-dev.1
+
+Owner-approved local implementation (Talk 20471/20481); not installed live.
+Adds owner-only inference.get/update with durable stale-safe overrides, pinned
+per-turn settings, unchanged conversation handles and native session preferences.
+Adds bounded content-free backend timing/diagnostics and HA receive timing;
+stream responses request no proxy buffering. Bootstrap config edits retain their
+normal replacement semantics. See README, docs/PROTOCOL.md and docs/TIMING.md.
+
+Verification: 81 OC + 41 HA unit tests passed. Extended disposable native pair
+passed: owner update while an old turn is running, old controls retained, next
+model/thinking observed on the same handle, old retry not redispatched, timing
+redaction, eight admin RPC denials, early decoded audio, policy/lock and unload
+checks. No live latency improvement or audible test is claimed for this candidate.
 
 ## Current implementation
 
@@ -56,3 +94,7 @@ fallback. Any upstream SDK implementation is a separate assignment, not permissi
 to edit installed bundles. Do not restart/reconfigure live OC or HA to finish a
 local test. Existing protocol/schema version is1; unknown storage versions fail
 closed and no unsupported data migration should be attempted.
+
+## Native Assist candidate — 2026-10-28
+
+Paired dev.3 packages are locally implemented and byte-verified. See `docs/NATIVE-ASSIST.md`. OC: 87 regression checks; HA: 45 regression checks; real paired runtimes + synthetic-model proof passed. Native HA exposure controls actual effects; wrapper is not MCP/SSH. Live installation/restarts and Jarvis native-tool grant/API selection remain pending owner approval. Do not report this as active.

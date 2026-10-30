@@ -2,49 +2,209 @@
   "id": "openclaw-home-assistant",
   "name": "OpenClaw Home Assistant",
   "description": "Home Assistant STT, agent conversation and streaming-first TTS through OpenClaw",
-  "version": "0.0.1-dev.0",
-  "activation": { "onStartup": true },
+  "version": "0.0.1-dev.10",
+  "contracts": {
+    "tools": [
+      "home_assistant",
+      "voice_conversation"
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "agentId": { "type": "string", "minLength": 1, "maxLength": 128 },
-      "persistentSession": { "type": "string", "minLength": 1, "maxLength": 512 },
+      "agentId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "persistentSession": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      },
       "conversation": {
-        "type": "object", "additionalProperties": false,
+        "type": "object",
+        "additionalProperties": false,
         "properties": {
-          "model": { "type": "string", "minLength": 1, "maxLength": 512 },
-          "thinking": { "type": "string", "minLength": 1, "maxLength": 32 },
-          "fast": { "anyOf": [ { "type": "boolean" }, { "type": "string", "enum": ["inherit", "auto", "ultrafast"] } ] }
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "thinking": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "fast": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "inherit",
+                  "auto",
+                  "ultrafast"
+                ]
+              }
+            ]
+          }
         }
       },
       "stt": {
-        "type": "object", "additionalProperties": false,
+        "type": "object",
+        "additionalProperties": false,
         "properties": {
-          "provider": { "type": "string", "minLength": 1, "maxLength": 512 },
-          "model": { "type": "string", "minLength": 1, "maxLength": 512 },
-          "language": { "type": "string", "minLength": 2, "maxLength": 32 }
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "language": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 32
+          },
+          "languages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 32
+            }
+          },
+          "defaultLanguage": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 32
+          },
+          "batch": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "provider": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            }
+          }
         }
       },
       "tts": {
-        "type": "object", "additionalProperties": false,
+        "type": "object",
+        "additionalProperties": false,
         "properties": {
-          "provider": { "type": "string", "minLength": 1, "maxLength": 512 },
-          "model": { "type": "string", "minLength": 1, "maxLength": 512 },
-          "voice": { "type": "string", "minLength": 1, "maxLength": 512 }
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "voice": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "languages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 32
+            }
+          },
+          "defaultLanguage": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 32
+          }
         }
       },
-      "languages": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "type": "string", "minLength": 2, "maxLength": 32 } },
-      "defaultLanguage": { "type": "string", "minLength": 2, "maxLength": 32 }
-    }
+      "languages": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 100,
+        "items": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32
+        }
+      },
+      "defaultLanguage": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 32
+      }
+    },
+    "required": [
+      "agentId"
+    ]
   },
   "uiHints": {
-    "agentId": { "label": "Home Assistant agent", "help": "Required: an existing agent ID. Never defaults silently to another agent." },
-    "persistentSession": { "label": "Persistent session", "help": "Optional existing same-agent session key. Omit to create and durably bind one on first persistent use." },
-    "conversation.model": { "label": "Conversation model", "help": "Native OpenClaw model reference or inherit." },
-    "conversation.thinking": { "label": "Thinking level", "help": "Native OpenClaw thinking level or inherit." },
-    "conversation.fast": { "label": "Fast mode", "help": "Native preference: true, false, auto, ultrafast or inherit." },
-    "stt": { "label": "Speech recognition", "help": "Inherit the OC audio pipeline or select a native provider/model. No credentials here." },
-    "tts": { "label": "Speech synthesis", "help": "Inherit native OC speech settings or select provider/model/voice. No credentials here." }
+    "agentId": {
+      "label": "Home Assistant agent",
+      "help": "Required: an existing agent ID. Never defaults silently to another agent."
+    },
+    "persistentSession": {
+      "label": "Persistent session",
+      "help": "Optional existing same-agent session key. Omit to create and durably bind one on first persistent use."
+    },
+    "conversation.model": {
+      "label": "Conversation model",
+      "help": "Native OpenClaw model reference or inherit."
+    },
+    "conversation.thinking": {
+      "label": "Thinking level",
+      "help": "Native OpenClaw thinking level or inherit."
+    },
+    "conversation.fast": {
+      "label": "Fast mode",
+      "help": "Native preference: true, false, auto, ultrafast or inherit."
+    },
+    "stt": {
+      "label": "Speech recognition",
+      "help": "Inherit the OC audio pipeline or select a native provider/model. No credentials here."
+    },
+    "tts": {
+      "label": "Speech synthesis",
+      "help": "Inherit native OC speech settings or select provider/model/voice. No credentials here."
+    },
+    "stt.batch": {
+      "label": "Batch fallback",
+      "help": "Optional native provider/model used when streaming is unsupported; empty object inherits the native audio pipeline. Never put credentials here."
+    },
+    "stt.languages": {
+      "label": "Supported STT languages",
+      "help": "Optional verified language list for this stage; otherwise inherits profile languages. This declaration is not provider discovery."
+    },
+    "tts.languages": {
+      "label": "Supported TTS languages",
+      "help": "Optional verified language list for this stage; otherwise inherits profile languages. This declaration is not provider discovery."
+    }
   }
 }
