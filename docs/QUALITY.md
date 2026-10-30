@@ -24,7 +24,7 @@ is a useful review benchmark. This custom integration does **not** claim a tier.
   preferred pipelines or hidden-entity permissions.
 - Allowlisted diagnostics, monotonic timing, bounded histories and sanitized
   failure receipts; no general transcript/audio/credential logging.
-- iot_class is local_poll: OC is the connected service, capability health polls
+- iot_class is local_polling: OC is the connected service, capability health polls
   every30s, and request streams do not constitute unsolicited state push.
 - Offline metadata/syntax/translation/public-SDK/package validators are included.
   Runtime dependencies remain native HA/OC; no vendor SDK was added.

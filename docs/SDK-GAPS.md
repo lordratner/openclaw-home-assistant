@@ -1,5 +1,19 @@
 # Native SDK capability notes
 
+## Companion upstream PRs
+
+The full streaming setup documented in the README uses two OpenClaw core PRs,
+both open/unmerged as of2026-10-29:
+
+- [#187371: finite-input streaming transcription for plugins](https://github.com/openclaw/openclaw/pull/187371).
+- [#187369: configured environment proxy routing for realtime transcription](https://github.com/openclaw/openclaw/pull/187369),
+  required where those WebSocket/egress proxies are used.
+
+Use a released host containing the relevant changes after merge, or a reviewed
+version-matched core canary/backport. This plugin neither bundles nor installs
+those core changes. Stock hosts without the finite API use native batch STT;
+an explicitly realtime-only model needs a compatible configured batch alternative.
+
 ## Candidate finite-input STT integration (plugin dev.6)
 
 The dev.6 bridge consumes the additive optional public injected-runtime method

@@ -25,6 +25,28 @@ compatibility/approval matrix still require controlled acceptance.
 
 ## Configuration
 
+### Upstream OpenClaw dependencies for streaming STT
+
+The streaming setup exercised by this project relies on **two companion
+OpenClaw core PRs**, both still open/unmerged as of 2026-10-29:
+
+- [#187371 — let plugins finalize streamed speech without provider-specific code](https://github.com/openclaw/openclaw/pull/187371)
+  supplies the optional finite-input streaming-transcription runtime used by the
+  plugin. It is needed for this realtime STT path.
+- [#187369 — realtime transcription honors configured environment proxies](https://github.com/openclaw/openclaw/pull/187369)
+  supplies WebSocket proxy routing needed by installations using configured
+  environment/protected egress proxies.
+
+For that full streaming configuration, use an OpenClaw release containing both
+changes after they merge, or an explicitly reviewed, version-matched core
+canary/backport containing them. **Installing this plugin does not install either
+core change.** Do not assume stock OpenClaw 2026.10.3 includes them or install
+unreviewed moving-main code merely to obtain streaming.
+
+Without the finite-input capability, the plugin uses native batch STT; configure
+a batch-compatible selection or `stt.batch` alternative. Conversation and TTS do
+not require these STT PRs. See [SDK capability notes](docs/SDK-GAPS.md).
+
 Select an existing agent explicitly; there is no silent main-agent fallback.
 Illustrative config (merge only after review, never replace the whole config):
 
